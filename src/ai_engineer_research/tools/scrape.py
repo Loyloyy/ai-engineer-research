@@ -24,10 +24,13 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from ..cache.store import default_cache
+from ..domains import host_of, is_reachable
+from ..runlog import BLOCKED_SKIP, OK, RESET, record_fetch
 
 logger = logging.getLogger(__name__)
 
 _BACKEND_ENV = "AER_FETCH_BACKEND"  # auto | http | browser
+_SKIP_ENV = "AER_FETCH_SKIP_BLOCKED"  # "1"/"true" (default) → fast-skip hosts not in the reachable allowlist
 # Cap returned content so a single huge page can't blow up the agent's context.
 # (Query-aware chunking + cross-encoder rerank is M2; this is the M1 guardrail.)
 _MAX_CHARS = 16000
@@ -163,10 +166,20 @@ def fetch_url(url: str) -> str:
     Args:
         url: The full URL to fetch (http/https).
     """
+    host = host_of(url)
     cached = default_cache.get(url)
     if cached is not None:
         content, title = cached.get("content", ""), cached.get("title", "")
+        record_fetch(url, host, OK if content else RESET)
     else:
+        skip = os.environ.get(_SKIP_ENV, "1").strip().lower() not in ("0", "false", "no")
+        if skip and not is_reachable(url):
+            # Known-blocked host (not in the reachable allowlist) → don't spend a network call/turn.
+            record_fetch(url, host, BLOCKED_SKIP)
+            return (
+                f"[fetch_url: {host or url} is not reachable from here (egress-blocked). Skipped. "
+                f"Use a reachable (✓) source instead; this domain's snippet is weak signal only.]"
+            )
         backend = _resolve_backend()
         if backend == "browser":
             content, title = _fetch_browser(url)
@@ -175,6 +188,7 @@ def fetch_url(url: str) -> str:
                 content, title = _fetch_http(url)
         else:
             content, title = _fetch_http(url)
+        record_fetch(url, host, OK if content else RESET)
         if content:
             default_cache.set(url, content, title)
 

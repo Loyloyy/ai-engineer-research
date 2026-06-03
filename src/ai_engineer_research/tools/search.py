@@ -53,10 +53,15 @@ def web_search(query: str, max_results: int = 5) -> str:
     if not results:
         return f"[web_search: no results for {query!r}. Try different keywords.]"
 
-    lines = [f"Search results for {query!r}:"]
+    from ..domains import is_reachable
+
+    lines = [
+        f"Search results for {query!r}  (✓ = fetchable in full; ✗ = blocked, snippet only — weak signal):"
+    ]
     for i, r in enumerate(results, start=1):
         title = (r.get("title") or "").strip() or "(no title)"
         url = (r.get("url") or "").strip()
         snippet = " ".join((r.get("content") or "").split())[:300]
-        lines.append(f"{i}. {title}\n   {url}\n   {snippet}")
+        mark = "✓" if is_reachable(url) else "✗"
+        lines.append(f"{i}. [{mark}] {title}\n   {url}\n   {snippet}")
     return "\n".join(lines)

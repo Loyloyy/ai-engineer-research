@@ -141,6 +141,77 @@ and falls back to http on an empty result. Graceful degradation holds throughout
 informative note or http fallback, never a crash). (Earlier same-day note said "drop the browser from
 M1"; superseded — it's now optional-and-selectable rather than removed.)
 
+## Egress map — what's actually reachable (2026-06-03, measured via scripts/egress_probe.py)
+
+Probed 122 research/code domains from inside the container. **28 reachable, 94 TLS-reset.** The
+allowlist is ML-infra-shaped: pull-models/containers/packages is open, general web is not.
+
+**Reachable substrate (rely on these):**
+- **GitHub** — github.com, raw.githubusercontent.com, api.github.com, codeload, objects.*, user-images.*
+  (only `gist.githubusercontent.com` is blocked). `*.github.io` works (langchain-ai.github.io, etc.).
+- **Hugging Face** — huggingface.co (+ /api, /papers, /docs, /blog), hf.co, discuss.huggingface.co.
+- **PyPI** — pypi.org + files.pythonhosted.org (no npm/crates/maven/conda/rubygems/nuget).
+- **Container registries** — hub.docker.com, registry-1.docker.io, ghcr.io, quay.io, NGC; developer.nvidia.com.
+- **Select docs** — docs.python.org, kubernetes.io, docs.docker.com.
+- **Search** — google.com, bing.com (so SearXNG discovery works; duckduckgo/brave/scholar blocked).
+
+**Blocked & notable:** arxiv (+ ar5iv/export/semanticscholar/openreview/aclanthology/PMLR/CVF), nearly all
+project docs (pytorch, sklearn, numpy, pandas, fastapi, vllm, pydantic, gradio, langchain docs, all
+vector-DB docs, MDN), StackOverflow, Wikipedia, all blogs (incl. openai/anthropic/langchain/pytorch),
+npm/crates/maven/conda. **No escape hatch:** web.archive.org, archive.org, r.jina.ai, and all CDNs
+(jsdelivr/unpkg/cloudflare) reset — so there is no proxy/Wayback workaround. Browser CDN
+(cdn.playwright.dev) also blocked → the Playwright browser path stays unavailable unless appealed.
+
+**Consequence.** Stage 2's CODE mandate is viable NOW (GitHub + HF + PyPI + github.io docs + Google/Bing
+search). The gaps are papers / 3rd-party tool docs / StackOverflow / blogs. The agent must (a) prefer the
+reachable set, (b) not waste turns on hosts that reset, and (c) be honest about grounding when a key
+source is unreachable (never backfill from parametric memory). Reachable-domain preference is kept as
+env/config (env-overridable) so appealed domains expand it with zero code change.
+
+## Whitelist appeal (final) + locked M1/M2 scope line (with planning chat, 2026-06-03)
+
+**Appeal list submitted** (framed "documentation / papers / reference & community data sources"; tiers
+are severable — infra can grant/cut each line):
+- **Tier 1 (docs + papers):** `context7.com` + `mcp.context7.com` (version-specific docs aggregator,
+  consumed via its MCP server — one appeal replaces dozens of doc-domain appeals); `arxiv.org` +
+  `export.arxiv.org` (full-text papers; HF/papers = abstracts only, not a substitute); `*.readthedocs.io`
+  (wildcard — vendor-independent docs fallback so we're not single-pointed on Context7).
+- **Tier 2 (background + technical discussion):** `en.wikipedia.org` + `upload.wikimedia.org`;
+  `hn.algolia.com` (Hacker News full-text search API — clean JSON, no scraping; chosen over the HN site
+  and over the Firebase API which is item-by-id only).
+- **Tier 3 (practitioner experience; severable, ordered by ease):** `stackoverflow.com` +
+  `api.stackexchange.com`; then `medium.com` + `*.substack.com`.
+- **Reddit DROPPED from this appeal.** A domain grant ≠ access (free API dead; `oauth.reddit.com` needs a
+  registered app + token + rate-limit handling). Rely on search snippets now; appeal + build the OAuth
+  integration together in round-2 only if the miss-log shows missing signal concentrates on reddit.
+- **Already open — exploit, don't appeal:** full GitHub, HF (incl. `discuss.huggingface.co`, a reachable
+  practitioner forum → make first-class), PyPI, container registries, Google/Bing.
+- **Don't appeal:** more 3rd-party MCP doc servers (Context7 is the one; wrap GitHub/HF/PyPI REST as our
+  own local tools); Wayback/archive.org/r.jina.ai/CDNs (confirmed reset, no proxy — fast-fail, don't build
+  retry logic); npm/crates/maven/conda (Python-only scope).
+
+**The M1/M2 line (locked).** Principle: *intelligence lives in the LOOP (M1), not the tool count (M2).*
+- **M1 — lean agentic loop (prove the LOOP, not the substrate).**
+  Tools: `web_search` (SearXNG) + `fetch_url` (httpx+trafilatura, HTML only — already reaches open hosts
+  like GitHub raw/README, HF pages, readthedocs-if-granted, as fetchable pages, not APIs).
+  Discipline (all cheap, all M1): known-blocked-host fast-skip; **per-run miss-log** (blocked-domain
+  telemetry = round-2 appeal evidence); snippet confidence-tagging; coverage-manifest scaffold in the artifact.
+  Behavior: scope → plan (`write_todos`) → gather (evidence_ids) → reflect/gap-check (incl. contradictions
+  vs the seed's attributed Opinions) → quality-driven stop. Single lead agent; headless non-blocking default,
+  interactive optional scope gate. Deliver: cited `report.md` + `DeepResearchArtifact`.
+- **M2 — rich substrate + multi-agent (DEPTH).**
+  Tools: structured APIs as first-class tools — GitHub (code-search / repo metadata / releases / issues /
+  dependents / awesome-lists / LICENSE), HF API, PyPI JSON, arxiv API; Context7 MCP (docs). `fetch_url`
+  gains the PDF→PyMuPDF branch (lands with arxiv; PyMuPDF is known from the old repo's Crawl4AI adapter).
+  Agents: code-scout / limitations / alternatives / comparison / prod-readiness (isolated context via `task`).
+  Output: gathered code in `code/**`; coverage manifest + confidence-tiering fully wired (existence/maturity
+  = HIGH from primary artifacts; real-world limitations/comparison = MED/LOW from forums/snippets).
+
+**Source-resolution tiers (architecture):** (a) structured tools (APIs + Context7 MCP) — preferred, clean,
+attributable [M2]; (b) direct `fetch_url` — raw files / readthedocs / arxiv PDFs / HF pages; (c) search
+snippets — signal-only, LOWER-confidence, never sole grounding. Coverage disclosure + confidence-by-evidence
+-type in the artifact tells downstream which half of the mandate is well-grounded.
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

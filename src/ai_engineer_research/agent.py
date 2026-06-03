@@ -1,13 +1,14 @@
-"""M1 lead research agent.
+"""M1 lead research agent — the lean agentic loop.
 
-Slice 2 (current): ONE agentic lead agent with the web tools + a real-disk filesystem backend
-rooted at the run folder. Given topic+brief it searches, fetches, and writes a cited `report.md`
-into `artifacts/<run_id>/`. This proves the search→scrape→write loop on the on-prem model.
-Scope + reflection discipline (Slice 3) and artifact extraction (Slice 4) layer on top of this;
-the full `run_research` contract (core.py) is wired in Slice 5.
+ONE lead agent with web_search + fetch_url over a real-disk filesystem backend rooted at the run
+folder. It runs scope → plan → gather → reflect → quality-stop, grounded in sources it actually
+fetched (never backfilled from parametric memory). Cheap discipline (DECISIONS: M1):
+domain-aware steering (✓/✗ in search), known-blocked fast-skip, a per-run miss-log, and a coverage
+manifest. The rich structured-API tools + subagents are M2; the intelligence here is the LOOP.
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -15,37 +16,60 @@ from .artifact import new_artifact_id
 from .cache.store import configure_default_cache
 from .config import RunConfig, load_config
 from .models import build_chat_model
+from .runlog import configure_ledger, current_ledger
 from .tools import WEB_TOOLS
 
 logger = logging.getLogger(__name__)
 
 ARTIFACTS_ROOT = Path("artifacts")
 # LangGraph's default recursion limit (25) is too low for a multi-round research loop.
-# (A proper wall-clock / iteration cap lands with Slice 3's scope+reflection discipline.)
-_RECURSION_LIMIT = 150
+_RECURSION_LIMIT = 200
 
-GATHER_SYSTEM_PROMPT = """You are a thorough technical research agent. You investigate a topic by \
-searching the web and reading sources in full, then write a detailed, well-sourced report.
+SYSTEM_PROMPT = """You are a meticulous senior technical researcher. Your job: produce a DETAILED, \
+COMPREHENSIVE, well-grounded report a careful engineer would trust to make a build decision. You work \
+by planning, searching, reading sources in full, reflecting on gaps, and stopping only when your \
+success criteria are met.
 
-Tools:
-- web_search(query, max_results): find sources. Issue focused, specific queries; vary wording across \
-calls to broaden coverage (official docs, GitHub repos, benchmarks, critiques, comparisons).
-- fetch_url(url): read a promising result in full. If it returns a "could not retrieve" note, move on \
-to another source — do not retry the same URL.
+You have a file workspace (write_file / read_file / edit_file / ls) and these research tools:
+- web_search(query, max_results): ranked results, each marked [✓] (fetchable in full here) or [✗] \
+(egress-blocked — you only get its title/snippet, which is WEAK, UNVERIFIED signal).
+- fetch_url(url): returns a [✓] source's full content as clean text. A [✗]/blocked URL returns a \
+"not reachable" note — don't retry it; pick a [✓] source instead.
 
-Method:
-1. Search broadly, then read the most relevant sources in full with fetch_url (do not rely on snippets).
-2. Corroborate claims across MULTIPLE independent sources. Note disagreements.
-3. Be comprehensive and specific — concrete mechanisms, numbers, trade-offs, limitations, alternatives. \
-Do NOT pad: every claim earns its place; no filler, no restating the prompt.
+WORKFLOW (in order):
+1. SCOPE. Before searching, write `scope.md`: the sharp research question, 3-6 concrete sub-questions, \
+explicit success criteria (what must be answered to be done), and your assumptions. This is your \
+contract — check against it before stopping.
+2. PLAN. Use write_todos to track the sub-questions as you work.
+3. GATHER. Per sub-question: search, then fetch_url the most relevant [✓] results IN FULL (don't rely \
+on snippets). Prefer primary sources — official repos/READMEs/code on GitHub, model cards & docs on \
+Hugging Face, package pages on PyPI, official docs. Corroborate important claims across MULTIPLE \
+independent sources; note disagreements.
+4. REFLECT. After a gather round, write/update `reflection.md`: which success criteria are met, which \
+sub-questions are still thin, and whether your evidence CONFIRMS or CONTRADICTS the prior opinions in \
+the seed/brief — treat those opinions as HYPOTHESES TO TEST, not facts. Then run targeted follow-up \
+searches/fetches to close the biggest gaps.
+5. STOP when success criteria are genuinely met (quality-driven) — not when you run out of ideas, and \
+not by padding.
 
-When you have enough, write the FINAL report to the file `report.md` using write_file, structured as:
+GROUNDING RULES (critical — this is a research tool, not a chatbot):
+- Cite ONLY sources you actually fetched (fetch_url returned real content). List them in ## Sources.
+- If something is supported only by a search snippet or a blocked source, you MAY mention it but MUST \
+mark it "(unverified — snippet only)" and treat it as low confidence.
+- NEVER present unverified claims or your own background knowledge as findings. If you couldn't reach \
+the evidence, say so plainly. Honest gaps beat confident guesses.
+
+OUTPUT. Write the final report to `report.md`:
   # <Title>
-  <sections with specific, sourced claims; inline-cite by URL>
+  <comprehensive, specific, structured sections: mechanisms, real code/examples, numbers, limitations, \
+alternatives, trade-offs vs alternatives, production-readiness. Inline-cite by URL. Thorough but NOT \
+padded — every claim earns its tokens; don't restate the brief.>
   ## Sources
   - <url> — <what it supported>
-Only include sources you actually read. Do not fabricate URLs, quotes, or numbers. The report file is \
-the deliverable — make sure you write it before finishing."""
+  ## Coverage & confidence
+  <one short paragraph: which source kinds you could reach vs not, and where confidence is HIGH \
+(verified from fetched primary sources) vs LOWER (snippet/unreachable-limited).>
+The report file is the deliverable — write it before finishing. Do not fabricate URLs, quotes, or numbers."""
 
 
 def _run_dir(run_id: str) -> Path:
@@ -67,7 +91,7 @@ def build_research_agent(cfg: RunConfig, run_dir: Path):
     return create_deep_agent(
         model=model,
         tools=WEB_TOOLS,
-        system_prompt=GATHER_SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT,
         backend=backend,
     )
 
@@ -75,9 +99,14 @@ def build_research_agent(cfg: RunConfig, run_dir: Path):
 def _task(topic: str, brief: str) -> str:
     t = f"Research topic: {topic}\n\n"
     if brief.strip():
-        t += f"Context / brief:\n{brief.strip()}\n\n"
-    t += "Research this thoroughly using your tools, then write the final report to report.md."
+        t += f"Seed / brief:\n{brief.strip()}\n\n"
+    t += "Follow the workflow: scope.md → plan → gather (fetch [✓] sources in full) → reflection.md → report.md."
     return t
+
+
+def _read(run_dir: Path, name: str) -> str:
+    p = run_dir / name
+    return p.read_text(encoding="utf-8") if p.exists() else ""
 
 
 def run_gather(
@@ -85,12 +114,19 @@ def run_gather(
     brief: str = "",
     config: RunConfig | None = None,
     run_id: str | None = None,
+    interactive: bool = False,
 ) -> tuple[str, Path, str]:
-    """Slice-2 entrypoint: gather + write report.md. Returns (report_markdown, run_dir, run_id)."""
+    """M1 lead-loop entrypoint. Returns (report_markdown, run_dir, run_id).
+
+    Writes into the run folder: report.md, scope.md, reflection.md (agent), coverage.json (ledger).
+    """
     cfg = config or load_config()
     configure_default_cache(enabled=True, ttl_hours=24)
+    configure_ledger()  # fresh per-run miss-log
     run_id = run_id or new_artifact_id()
     run_dir = _run_dir(run_id)
+    if interactive:
+        logger.info("interactive scope-gate not wired yet (M1 later); running headless for run %s", run_id)
 
     agent = build_research_agent(cfg, run_dir)
     logger.info("research run %s starting (lead_role=%s) -> %s", run_id, cfg.lead_role, run_dir)
@@ -99,8 +135,19 @@ def run_gather(
         config={"recursion_limit": _RECURSION_LIMIT},
     )
 
-    report_path = run_dir / "report.md"
-    report_md = report_path.read_text(encoding="utf-8") if report_path.exists() else ""
+    # Coverage manifest from the fetch ledger (objective grounding telemetry + round-2 appeal evidence).
+    coverage = current_ledger().manifest()
+    try:
+        (run_dir / "coverage.json").write_text(json.dumps(coverage, indent=2))
+    except OSError as e:
+        logger.warning("could not write coverage.json: %s", e)
+
+    report_md = _read(run_dir, "report.md")
     if not report_md:
         logger.warning("run %s finished but produced no report.md in %s", run_id, run_dir)
+    logger.info(
+        "run %s done: fetched_ok=%d blocked/failed=%d (blocked hosts: %s)",
+        run_id, coverage["fetched_ok"], coverage["blocked_or_failed"],
+        ", ".join(coverage["blocked_hosts"][:10]) or "none",
+    )
     return report_md, run_dir, run_id

@@ -66,6 +66,30 @@ keep on-prem for summarize/extract. The probe prints the endpoint + served id it
 > `--tool-call-parser`). The served id may carry a leading slash — set `<ROLE>_MODEL` to exactly
 > `GET <API_BASE>/models` → `data[0].id`.
 
+### Run a research (after M0 passes)
+
+```bash
+# Lean single-agent loop (default): scope → gather → reflect → cited report + artifact
+docker-compose run --rm app python -m ai_engineer_research.cli "<topic>" --brief "<context>"
+
+# Multi-agent (code-scout / landscape / maturity + lead synthesis): adds comparison.md + code/**
+docker-compose run --rm -e AER_MULTI_AGENT=1 app python -m ai_engineer_research.cli "<topic>" --brief "<context>" -v
+
+# Seed from a Stage-1 wiki page instead of a freeform brief
+docker-compose run --rm app python -m ai_engineer_research.cli "<topic>" --seed-page <Wiki-Page-Id>
+```
+
+Each run writes a timestamped folder `artifacts/<id>/`:
+
+```
+report.md · comparison.md · code/** · scope.md · reflection.md · notes/** · coverage.json · vNN.json
+```
+
+`vNN.json` is the structured **`DeepResearchArtifact`** (the Stage 2→3 contract); `coverage.json` records
+grounding telemetry (fetched vs blocked) + wall-clock. Programmatic entry: `run_research(...)` in
+`ai_engineer_research.core`. How it all fits together: see **`DEV_NOTES.md`** (learnings) and
+**`DECISIONS.md`** (architecture log).
+
 ## Status
 
 - **M0** ✅ on-prem tool-calling validated · **M1** ✅ lean agentic loop (scope→gather→reflect→cited

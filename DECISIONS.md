@@ -8,6 +8,17 @@ Predecessor: the GPT-Researcher prototype (`deep-researcher` repo) is superseded
 kept as the validated reference + source of reusable layers. Its `DECISIONS.md` holds the full
 "migrate GPT Researcher → deepagents" rationale.
 
+---
+**CURRENT STATUS (2026-06-04).** Stage 2 is built & validated end-to-end on the on-prem model. M0
+(tool-calling) ✅ · M1 (lean agentic loop → cited report + artifact) ✅ · M2 (multi-agent: code-scout/
+landscape/maturity + structured GitHub/HF/PyPI tools + `code/**`; opt-in `AER_MULTI_AGENT=1`) ✅ · M3
+(Stage-3 contract doc + extraction hardening) ✅ · robustness (timing + salvage-on-error + tuned
+timeouts) ✅ · subagent transparency (`notes/<name>.md`) ✅. **Only remaining: wire Context7 MCP once
+the egress appeal is granted (not yet filed).** Quickstart in `README.md`; gotchas in `DEV_NOTES.md`;
+handoff contract in `docs/STAGE3_CONTRACT.md`. The entries below are the chronological rationale log.
+
+---
+
 ## Stage 2 rebuild on LangChain `deepagents` — repo bootstrap (2026-06-03)
 
 **Why deepagents (not GPTR).** The Stage-2 mandate is a multi-agent + filesystem job (specialized
@@ -222,8 +233,8 @@ The lean agentic loop is validated end-to-end on the on-prem model via `run_rese
   `report.md` (cited, comprehensive), `coverage.json`, and `vNN.json` — a `DeepResearchArtifact` with
   15 findings whose `evidence_ids` all resolve to fetched sources (citation validation working),
   tech_stack/reference_repos/implementation_steps/open_questions, sources grounded in actually-fetched
-  URLs, and the coverage manifest embedded. GLM-5's `with_structured_output` (nested pydantic) worked —
-  no JSON-mode fallback needed.
+  URLs, and the coverage manifest embedded. The on-prem model's `with_structured_output` (nested
+  pydantic) worked — no JSON-mode fallback needed.
 - Run folders are timestamped+sortable (`dra-YYYYMMDD-HHMMSS-rand`). Files land NFS-squashed
   (nobody:nogroup, 0644) — readable; manage via the 777 parent.
 
@@ -265,8 +276,8 @@ holds full toolset, subagents inherit it incl. filesystem since deepagents `tool
 and opt-in via `AER_MULTI_AGENT=1` (lean M1 stays default). Validated run produced: `code/**` with 7
 real source files (code-scout's write_file works), an analyst-grade `comparison.md` matrix (9 frameworks
 + pairwise deep-dives + decision matrix, lead-synthesized from subagent summaries), report.md, and the
-artifact. GLM-5 drove the delegation loop with no recursion error. **Remaining M2:** Context7 MCP (waits
-on the egress appeal, not yet filed).
+artifact. The on-prem model drove the delegation loop with no recursion error. **Remaining M2:** Context7
+MCP (waits on the egress appeal, not yet filed).
 
 **Subagent transparency:** each subagent now also writes its full findings to `notes/<name>.md`
 (code-scout/landscape/maturity + focused-<slug>) before returning its summary — inspectable per run,

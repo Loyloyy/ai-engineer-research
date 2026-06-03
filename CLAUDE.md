@@ -22,9 +22,29 @@
 - There is a **planning chat** that designed this work — consult it (via the user) on genuinely open
   structural decisions.
 
-## Layout
-- `src/ai_engineer_research/` — `models.py` (role→ChatModel factory), `config.py` (RunConfig). Core grows per milestone.
-- `scripts/m0_toolcall_probe.py` — M0 tool-calling validation.
-- `docker/` — Dockerfile (python:3.11-slim), compose (searxng + app; **no litellm**).
-- Reusable layers to port from the sibling `deep-researcher` repo: artifact/{schema,store,validate,extract},
-  scrapers/crawl4ai, rerank, cache, vault, eval — re-wrapped as LangChain **tools**, not GPTR injections.
+## Status
+M0–M3 built & validated end-to-end (single-agent **and** multi-agent) on the on-prem model. Only
+appeal-gated work remains: Context7 MCP once `context7.com` is unblocked. See `DECISIONS.md` for the
+full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` for the Stage 2→3 handoff.
+
+## Layout (`src/ai_engineer_research/`)
+- `core.py` — `run_research(...)`, the stable contract (assemble brief → loop → extract → save).
+- `agent.py` — the lead research loop: lean M1 (`SYSTEM_PROMPT`) + multi-agent M2 (`M2_LEAD_PROMPT`),
+  `build_research_agent(multi_agent=)`, `run_gather(...)` (timing + salvage-on-error).
+- `subagents.py` — M2 subagent specs: code-scout / landscape / maturity + focused-investigator.
+- `models.py` — `build_chat_model(role)` → `ChatOpenAI` (role→model factory; env timeout/retries).
+- `config.py` — `RunConfig` + `load_config` (`.env` + `config/pipeline.yaml`).
+- `seed.py` — Stage-1 wiki page → research brief (Opinions=hypotheses, Sources, 1-hop links).
+- `domains.py` — reachable-domain policy (egress allowlist, env-overridable).
+- `runlog.py` — per-run fetch ledger → miss-log + coverage manifest (+ elapsed/truncated).
+- `tools/` — `search.py` (SearXNG), `scrape.py` (browserless `fetch_url`), `github.py`/`hf.py`/`pypi.py`
+  (M2 structured APIs). `WEB_TOOLS` (lean M1) vs `STRUCTURED_TOOLS`.
+- `artifact/` — `schema.py` (DeepResearchArtifact), `store.py`, `validate.py`, `extract.py`.
+- `cache/store.py` — URL-keyed content cache (shared across subagents). `cli.py` — CLI entrypoint.
+- `scripts/` — `m0_toolcall_probe.py`, `egress_probe.py`. `docker/` — Dockerfile + compose (searxng +
+  app; **no litellm**).
+
+## Key env knobs (all in gitignored `.env`)
+- `<ROLE>_MODEL/_API_BASE/_API_KEY` (strategic/smart/fast/judge) · `LEAD_ROLE` · `SEARX_URL`
+- `AER_MULTI_AGENT` (0/1) · `AER_FETCH_BACKEND` (http/browser/auto) · `AER_REACHABLE_DOMAINS`
+- `AER_LLM_TIMEOUT_S` / `AER_LLM_MAX_RETRIES` · `GITHUB_TOKEN` (optional, lifts GH rate limit)

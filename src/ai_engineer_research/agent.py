@@ -17,7 +17,8 @@ from .cache.store import configure_default_cache
 from .config import RunConfig, load_config
 from .models import build_chat_model
 from .runlog import configure_ledger, current_ledger
-from .tools import WEB_TOOLS
+from .subagents import RESEARCH_SUBAGENTS
+from .tools import STRUCTURED_TOOLS, WEB_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +73,55 @@ padded — every claim earns its tokens; don't restate the brief.>
 The report file is the deliverable — write it before finishing. Do not fabricate URLs, quotes, or numbers."""
 
 
+M2_LEAD_PROMPT = """You are the LEAD of a research team. You scope the work, delegate to specialist \
+subagents, reconcile their findings, and write the deliverables. You DO NOT do the bulk gathering \
+yourself — you delegate it.
+
+Your subagents (invoke via the task tool, in parallel where possible):
+- code-scout — finds + gathers real implementations; saves code into code/**. ("what code exists")
+- landscape — maps alternatives and their attributes. ("what else exists & how it compares")
+- maturity — limitations + production-readiness of the subject. ("is it real & safe for prod")
+- focused-investigator — spawn with a SPECIFIC instruction for an ad-hoc deep pass the three don't \
+cover (e.g. a benchmarks/eval investigation, a security pass, a deep dive on one flagged limitation).
+
+WORKFLOW:
+1. SCOPE — write `scope.md`: sharp question, 3-6 sub-questions, success criteria, assumptions.
+2. PLAN — write_todos for the sub-questions.
+3. DELEGATE — call task for code-scout, landscape, and maturity (you may issue them together). Give \
+each a focused instruction tied to the topic.
+4. REFLECT — write `reflection.md`: read the subagents' summaries; note gaps + whether evidence \
+CONFIRMS or CONTRADICTS the prior opinions in the seed/brief (treat them as hypotheses). If a gap is \
+topic-specific (e.g. benchmark saturation, a security concern), spawn focused-investigator for it.
+5. RECONCILE — where subagents disagree (e.g. code-scout's README claim vs maturity's issue reports), \
+reconcile using confidence tiers (primary artifacts = HIGH; forum/snippet = MED/LOW) and flag genuine \
+disagreements inline with the wiki convention `[CONTRADICTION: …]`. This tension is a FEATURE.
+6. SYNTHESIZE — write the deliverables:
+   - `comparison.md`: a markdown table — rows = the subject + each alternative (from landscape), \
+columns = maturity, license, key strengths, key weaknesses, best-for. Build it from the subagents' \
+summaries (you work from their distilled outputs, not raw context).
+   - `report.md`: comprehensive, specific, structured (architecture/mechanisms, real code refs from \
+code-scout, limitations + production-readiness from maturity, alternatives + comparison). Inline-cite \
+by URL. Then `## Sources` (only fetched/API-derived) and `## Coverage & confidence` (what you could \
+reach vs not; HIGH vs LOWER confidence).
+
+GROUNDING: cite only what the team actually fetched or got from structured APIs; mark snippet/blocked \
+sources '(unverified)'. Never fill gaps from background knowledge. Be comprehensive, not padded. \
+`report.md` is the primary deliverable — ensure it (and comparison.md) are written before you finish."""
+
+
 def _run_dir(run_id: str) -> Path:
     d = ARTIFACTS_ROOT / run_id
     d.mkdir(parents=True, exist_ok=True)
     return d.resolve()
 
 
-def build_research_agent(cfg: RunConfig, run_dir: Path):
-    """Create the lead deep agent with the web tools + a real-disk backend rooted at run_dir."""
+def build_research_agent(cfg: RunConfig, run_dir: Path, multi_agent: bool = False):
+    """Create the lead deep agent rooted at run_dir.
+
+    multi_agent=False (M1): lean single agent with web tools.
+    multi_agent=True  (M2): lead delegates to code-scout/landscape/maturity (+ focused-investigator);
+      lead holds the full toolset so subagents inherit it (incl. filesystem → they can write code/**).
+    """
     try:
         from deepagents.backends.filesystem import FilesystemBackend
     except ImportError:  # tolerate a top-level re-export across beta versions
@@ -88,6 +130,14 @@ def build_research_agent(cfg: RunConfig, run_dir: Path):
 
     backend = FilesystemBackend(root_dir=str(run_dir), virtual_mode=True)
     model = build_chat_model(cfg.lead_role)
+    if multi_agent:
+        return create_deep_agent(
+            model=model,
+            tools=[*WEB_TOOLS, *STRUCTURED_TOOLS],
+            system_prompt=M2_LEAD_PROMPT,
+            subagents=RESEARCH_SUBAGENTS,
+            backend=backend,
+        )
     return create_deep_agent(
         model=model,
         tools=WEB_TOOLS,
@@ -115,21 +165,28 @@ def run_gather(
     config: RunConfig | None = None,
     run_id: str | None = None,
     interactive: bool = False,
+    multi_agent: bool | None = None,
 ) -> tuple[str, Path, str]:
-    """M1 lead-loop entrypoint. Returns (report_markdown, run_dir, run_id).
+    """Lead-loop entrypoint. Returns (report_markdown, run_dir, run_id).
 
-    Writes into the run folder: report.md, scope.md, reflection.md (agent), coverage.json (ledger).
+    multi_agent: None → use cfg.multi_agent (env AER_MULTI_AGENT / pipeline.yaml); True/False overrides.
+    Writes into the run folder: report.md, scope.md, reflection.md (+ comparison.md & code/** in M2),
+    coverage.json (ledger).
     """
     cfg = config or load_config()
+    use_multi = cfg.multi_agent if multi_agent is None else multi_agent
     configure_default_cache(enabled=True, ttl_hours=24)
-    configure_ledger()  # fresh per-run miss-log
+    configure_ledger()  # fresh per-run miss-log (shared across subagents — they run in-process)
     run_id = run_id or new_artifact_id()
     run_dir = _run_dir(run_id)
     if interactive:
-        logger.info("interactive scope-gate not wired yet (M1 later); running headless for run %s", run_id)
+        logger.info("interactive scope-gate not wired yet; running headless for run %s", run_id)
 
-    agent = build_research_agent(cfg, run_dir)
-    logger.info("research run %s starting (lead_role=%s) -> %s", run_id, cfg.lead_role, run_dir)
+    agent = build_research_agent(cfg, run_dir, multi_agent=use_multi)
+    logger.info(
+        "research run %s starting (mode=%s lead_role=%s) -> %s",
+        run_id, "multi-agent" if use_multi else "lean", cfg.lead_role, run_dir,
+    )
     agent.invoke(
         {"messages": [{"role": "user", "content": _task(topic, brief)}]},
         config={"recursion_limit": _RECURSION_LIMIT},

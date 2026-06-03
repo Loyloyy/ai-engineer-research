@@ -36,7 +36,8 @@ class ArtifactConfig:
 class RunConfig:
     # Which role drives the LEAD agent. M0 validates this role's tool-calling.
     lead_role: str = "strategic"
-    # Roster of subagents (M2+). Empty == single lead agent (M1).
+    # M2: multi-agent mode (lead + code-scout/landscape/maturity subagents). False = lean M1 loop.
+    multi_agent: bool = False
     max_iterations: int = 3
     wall_clock_timeout_s: int = 1800
     search_url: str = "http://searxng:8080"
@@ -51,8 +52,10 @@ def load_config(path: str | Path | None = None) -> RunConfig:
     data = data or {}
     r = data.get("research", {}) or {}
     ar = data.get("artifact", {}) or {}
+    env_multi = os.environ.get("AER_MULTI_AGENT", "").strip().lower()
     return RunConfig(
         lead_role=os.environ.get("LEAD_ROLE") or r.get("lead_role", "strategic"),
+        multi_agent=(env_multi in ("1", "true", "yes")) if env_multi else bool(r.get("multi_agent", False)),
         max_iterations=int(r.get("max_iterations", 3)),
         wall_clock_timeout_s=int(r.get("wall_clock_timeout_s", 1800)),
         search_url=os.environ.get("SEARX_URL") or r.get("search_url", "http://searxng:8080"),

@@ -31,11 +31,13 @@ CODE_SCOUT = {
         "files each into `code/<owner-repo>/<filename>` using write_file — fetch raw files via "
         "fetch_url on https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>.\n"
         f"{_GROUNDING}\n"
-        "Before returning, write your full findings (repos evaluated, files saved, key implementation "
-        "notes) to `notes/code-scout.md` using write_file.\n"
-        "RETURN a concise summary: the key repos (full_name, ★, license, url), which files you saved "
-        "(paths under code/), and notable implementation details / patterns. Do not paste large code "
-        "into the summary — it's on disk."
+        "You have TWO required file outputs before returning (write BOTH with write_file): "
+        "(1) representative source files under `code/<owner-repo>/`, and (2) `notes/code-scout.md` "
+        "with your full findings (repos evaluated, files saved, key implementation notes). Do not "
+        "return until notes/code-scout.md exists.\n"
+        "Then RETURN a concise summary: the key repos (full_name, ★, license, url), which files you "
+        "saved (paths under code/), and notable implementation details / patterns. Do not paste large "
+        "code into the summary — it's on disk."
     ),
 }
 

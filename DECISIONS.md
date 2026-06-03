@@ -42,16 +42,25 @@ callables; subagents are declarative `{name, description, system_prompt, ...}`; 
 LangGraph → invoked with `.invoke({"messages": [...]})`. Supply-chain vigilance now tracks
 deepagents / langgraph / langchain (the LiteLLM pin burden is gone).
 
+## Models in use + the multi-model capability (2026-06-03)
+- **For now ALL roles point at the same on-prem model** (set every `.env` triple to it). The goal is
+  not multi-model yet — it's the *capability* to swap/mix models with no code change.
+- **Swap any role to a frontier (or any OpenAI-compatible) endpoint** = edit that role's `.env` triple.
+  No proxy, no code change.
+- **Run multiple models simultaneously** = native, not custom-baked: `build_chat_model` binds per role,
+  and deepagents subagents each accept their own `model` (the subagent dict's `model` field). So at M2
+  the lead can run on the on-prem model while a chosen subagent runs on a different/frontier model, just
+  by binding a different role. No bespoke router needed (and per the user: if it had to be custom-baked,
+  we wouldn't — it doesn't).
+
 ## Milestone plan
 
 - **M0 (current): validate on-prem tool-calling.** `build_chat_model` + a trivial 2-tool deep agent
   (`scripts/m0_toolcall_probe.py`) → prove the LEAD model plans, calls tools, uses results, finishes,
   against the live OpenAI-compatible endpoint. If it's a weak caller, route LEAD to a frontier model
   and keep on-prem for summarize/extract. **Do NOT build the 5-subagent topology on an unvalidated model.**
-- **M1: single lead agent + SearXNG + Crawl4AI tools → parity** (a cited report via `run_research`).
-  Reconcile the contract signature here (handover lists `run_research(topic, brief, seed_pages,
-  parent_id)`; the GPTR core used `(topic, brief, config, parent_id)` — likely add `seed_pages` for the
-  Stage-1 wiki seed and keep `config` optional).
+- **M1: single agentic lead loop + SearXNG + Crawl4AI tools → cited report + artifact.**
+  See the "M1 research-loop design" entry below (settled with the planning chat).
 - **M2: add subagents + GitHub code-gathering + composite filesystem artifact folder**
   (`artifacts/<id>/`: report.md · comparison.md · code/** · notes/**). Refine the subagent roster here
   (proposed: code-scout / limitations / alternatives / comparison / prod-readiness) — sanity-check the
@@ -59,6 +68,59 @@ deepagents / langgraph / langchain (the LiteLLM pin burden is gone).
 - **M3: artifact extraction + Stage-3 contract.** Port artifact/{schema,store,validate,extract}; run
   extraction over the deepagents output; document the artifact schema + run-folder layout + a short
   "how Stage 3 consumes this" note. DO NOT build Stage 3.
+
+## M1 research-loop design — settled with the planning chat (2026-06-03)
+
+The line between "agentic researcher" and "deepagents-wrapped GPTR": **the loop is driven by what it
+learns, not a fixed pipeline.** The model decides the next action from current findings + open gaps,
+reflects, and stops on quality. If M1 doesn't do that, it's the linear port the user warned against.
+
+- **A. M1 = agentic SINGLE-agent loop** (plan → gather → reflect → stop). NOT a minimal linear M1.
+  agentic ≠ subagents: M1 is ONE lead agent; the specialized fan-out
+  (code-scout/limitations/alternatives/comparison/prod-readiness) + code-gathering is **M2**. Internal
+  build order is fine: wire one agent + search/scrape tools to produce *something* first, then layer the
+  scope/reflection discipline on top. (Integration de-risk is M0's job, not a reason for a linear M1.)
+- **B. Scope artifact, optionally human-gated** (not "ask N questions"). The agent ALWAYS produces an
+  explicit research scope as step 1 (sharp question + success criteria + assumptions). Modes differ only
+  in WHO gates it:
+  - *Headless* (default; the automated Stage-1→2 trigger): NEVER blocks. Scope auto-derived from the
+    seed, logged, run proceeds. Hard requirement — the trigger can't answer questions.
+  - *Interactive* (UI/human-initiated): scope surfaced for approval/edit via deepagents `interrupt_on`;
+    may raise 1–3 clarifying questions. One scope artifact, one optional gate — not two code paths.
+- **C. Reflection is IN M1, non-negotiable** — the single feature that makes M1 agentic. After each
+  gather round: review findings vs open questions + success criteria, flag gaps + contradictions with
+  the seed's attributed `## Opinions`, issue targeted follow-ups. Treat the seed's Opinions as
+  **hypotheses to verify or refute, not facts to parrot** (the "challenge the seed" behavior; lean on
+  the wiki's `[CONTRADICTION: …]` convention). Scales to reflecting over subagent outputs in M2.
+- **D. Emit a cited `report.md` + `DeepResearchArtifact` in M1** — a complete vertical slice (thin but
+  end-to-end, evaluable against the golden set). The artifact's `evidence_ids` need a report to extract
+  from. M2 adds depth, not completeness. (⇒ artifact extraction is pulled forward into M1; M3 becomes
+  refine-extraction + the Stage-3 contract doc.)
+- **E. Locked contract signature** (optionals are keyword-only to prevent call-site mix-ups):
+  ```python
+  run_research(
+      topic: str,
+      brief: str = "",
+      *,
+      seed_pages: list[str] | None = None,   # wiki page ids; seed-builder expands → scope/brief
+      parent_id: str | None = None,          # refinement lineage
+      config: RunConfig | None = None,
+      interactive: bool = False,             # False = headless, never blocks (decision B)
+  ) -> tuple[str, DeepResearchArtifact]
+  ```
+
+**Comprehensiveness vs the concise seed.** The Stage-1 wiki is intentionally terse; Stage-2 output is
+the opposite goal — as DETAILED and COMPREHENSIVE as a good analyst would write, WITHOUT token-wasting
+(no padding/filler, no restating the seed; every claim earns its tokens). The seed is a floor, not a
+ceiling. This is enforced in three places: (1) the seed brief's "How to use this seed" framing
+(`seed.build_brief`), (2) the lead agent's system prompt (M1), and (3) the report-writing + artifact
+extraction prompts (M1). Depth comes from real code + multiple independent sources + the
+limitations/alternatives/comparison/prod-readiness analysis, not from verbosity.
+
+**M0 gates M1 quality.** Planning + reflection are the hardest things to do well via tool-calling. If
+the on-prem probe is marginal, route the LEAD (scope + plan + reflect) to a frontier model and keep
+on-prem for high-volume gather/summarize — config-only via per-role/per-subagent binding. Don't force a
+weak caller through the reflection loop and conclude "agentic doesn't work."
 
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,

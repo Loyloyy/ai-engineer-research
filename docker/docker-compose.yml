@@ -6,6 +6,10 @@
 # Host-specific bits (mounting private model paths, GPU reservations, the served-model
 # endpoint if not host.docker.internal) go in docker-compose.override.yml (gitignored) —
 # see docker-compose.override.yml.example.
+#
+# `version:` (not `name:`) — the server runs docker-compose v1, which requires it.
+
+version: "3.8"
 
 services:
   searxng:
@@ -39,9 +43,12 @@ services:
       - ../config:/app/config          # edit pipeline.yaml without rebuilding
       - ../src:/app/src                # mount source so code changes need no image rebuild
       - ../scripts:/app/scripts
-      - ../artifacts:/app/artifacts    # persisted research run folders (M2+)
-      - ../vault_data:/app/vault_data  # duplicated READ-ONLY wiki seed (M1+)
-      - hf-cache:/app/.hf_cache        # embedding/reranker weights, cached across runs (M2+)
+      # --- Output/cache mounts (enable per milestone). On the NFS share these dirs must be
+      #     PRE-CREATED by the user first (Docker runs as root and root-squash blocks mkdir):
+      #         mkdir -p ../artifacts ../vault_data && chmod 777 ../artifacts ../vault_data
+      # - ../vault_data:/app/vault_data  # M1: duplicated READ-ONLY wiki seed
+      # - ../artifacts:/app/artifacts    # M2: persisted research run folders
+      # - hf-cache:/app/.hf_cache        # M2: embedding/reranker weights, cached across runs
 
-volumes:
-  hf-cache:
+# volumes:
+#   hf-cache:

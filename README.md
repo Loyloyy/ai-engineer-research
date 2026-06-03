@@ -35,12 +35,14 @@ LiteLLM gateway. Configure four role triples in `.env` (see `.env.example`):
 
 Code is authored locally and run on the server in Docker (no host venv). On the server:
 
+> The server runs **`docker-compose` v1** (hyphenated). Commands below use that form.
+
 ```bash
-cp .env.example .env            # then fill in the real role triples (served ids, endpoints, keys)
+cp .env.example .env            # then fill in the role triples (all roles can point at the same model)
 cp docker/docker-compose.override.yml.example docker/docker-compose.override.yml   # optional host bits
 
 cd docker
-docker compose build app
+docker-compose build app
 ```
 
 ### Milestone 0 — validate tool-calling (do this first)
@@ -49,9 +51,13 @@ deepagents is tool-call-heavy. Prove the LEAD model reliably plans, calls tools,
 finishes before building the subagent topology:
 
 ```bash
-docker compose run --rm app python scripts/m0_toolcall_probe.py            # drives $LEAD_ROLE (default strategic)
-docker compose run --rm app python scripts/m0_toolcall_probe.py --role smart
+docker-compose run --rm app python scripts/m0_toolcall_probe.py            # drives $LEAD_ROLE (default strategic)
+docker-compose run --rm app python scripts/m0_toolcall_probe.py --role smart
 ```
+
+> **NFS note:** M0 mounts no output dirs. When M1/M2 enable the `vault_data/` and `artifacts/`
+> mounts, pre-create them first (Docker root-squash blocks mkdir on NFS):
+> `mkdir -p ../artifacts ../vault_data && chmod 777 ../artifacts ../vault_data`.
 
 Exit 0 = PASS (safe to build topology). Non-zero = route LEAD to a stronger caller (frontier) and
 keep on-prem for summarize/extract. The probe prints the endpoint + served id it used (never the key).

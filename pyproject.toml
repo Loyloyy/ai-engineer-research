@@ -17,11 +17,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# M2 — web tooling (search is SearXNG via HTTP; extraction via Crawl4AI as a LangChain tool).
-# Heavy (torch + playwright chromium) — lazy-imported; only the server "all" build pulls these.
+# M1 — web tooling. Search = SearXNG over HTTP (httpx); extraction = browserless httpx + trafilatura
+# (no headless browser: overkill for research sources + its download CDN is egress-blocked here).
 web = [
-  "crawl4ai>=0.4",
   "httpx",
+  "trafilatura>=1.8",
+]
+# Optional browser-based extraction (JS-heavy sources). NOT in the M1 path — needs the Playwright
+# CDN unblocked on the server egress allowlist. Revisit in M2 only if browserless misses content.
+browser = [
+  "crawl4ai>=0.4",
 ]
 # M2 — post-retrieval cross-encoder rerank (langchain 1.x: rerankers live in langchain-classic).
 rerank = [
@@ -36,9 +41,9 @@ vault = [
 ]
 # M3+ — optional presentation layer (no pipeline logic lives here).
 ui = ["gradio>=4"]
-# Server build — everything.
+# Server build — everything (incl. the optional browser path).
 all = [
-  "crawl4ai>=0.4", "httpx",
+  "httpx", "trafilatura>=1.8", "crawl4ai>=0.4",
   "sentence-transformers", "langchain-classic", "langchain-huggingface",
   "rank-bm25", "langchain-mcp-adapters",
   "gradio>=4",

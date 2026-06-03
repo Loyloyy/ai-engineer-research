@@ -122,6 +122,25 @@ the on-prem probe is marginal, route the LEAD (scope + plan + reflect) to a fron
 on-prem for high-volume gather/summarize — config-only via per-role/per-subagent binding. Don't force a
 weak caller through the reflection loop and conclude "agentic doesn't work."
 
+## M1 Slice 1 — browserless extraction (2026-06-03)
+
+`web_search` (SearXNG/httpx) validated on the server first try. `fetch_url` initially used
+Crawl4AI + Playwright chromium (ported from the GPTR repo) but the browser **could not be installed**
+in the image: the Playwright browser-download CDN isn't on the server egress allowlist, so the build's
+`playwright install` failed (silently, via `|| echo`) and `fetch_url` had no browser at runtime.
+
+**Decision: dual-backend `fetch_url`, selected by `AER_FETCH_BACKEND` (auto|http|browser).** The
+DEFAULT path is **browserless** — httpx (egress-friendly, follows redirects) + trafilatura (clean
+boilerplate-stripped markdown) — because research sources (GitHub, docs, blogs, arxiv abstracts, raw
+files) are static HTML and need no browser. The **browser** path (Crawl4AI + Playwright chromium, JS
+rendering) is selectable for when it's needed, but requires the chromium binary, which requires the
+Playwright download CDN to be on the server egress allowlist. Install path: `playwright install
+--dry-run chromium` prints the CDN host(s) → appeal them → rebuild (`WITH_BROWSER=1`, default) → set
+`AER_FETCH_BACKEND=browser` (or `auto`). `auto` uses the browser only if a chromium binary is present
+and falls back to http on an empty result. Graceful degradation holds throughout (blocked/empty →
+informative note or http fallback, never a crash). (Earlier same-day note said "drop the browser from
+M1"; superseded — it's now optional-and-selectable rather than removed.)
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

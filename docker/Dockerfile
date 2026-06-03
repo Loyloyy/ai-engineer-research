@@ -1,9 +1,12 @@
 # ai-engineer-research app image — runs the deep researcher in a container (no host venv).
 # deepagents requires Python >= 3.11.
 #
-# M1: base + web extras (httpx for search, crawl4ai + playwright chromium for fetch_url).
-# M2 adds rerank/vault/ui — flip the install to ".[all]" then.
+# M1: base + web (httpx + trafilatura, the default browserless fetch_url backend) + browser
+# (crawl4ai, the optional JS-rendering backend selected via AER_FETCH_BACKEND). M2 adds rerank/
+# vault/ui — flip to ".[all]". Set --build-arg WITH_BROWSER=0 to skip the heavy browser path.
 FROM python:3.11-slim
+
+ARG WITH_BROWSER=1
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -20,10 +23,15 @@ COPY pyproject.toml ./
 COPY src ./src
 RUN pip install --upgrade pip && pip install -e ".[web]"
 
-# Chromium + OS deps for Crawl4AI's fetch_url. Non-fatal: some networks block the Playwright
-# CDN — if so the build still succeeds; fetch_url then degrades to "could not retrieve" and the
-# run continues on search snippets. (M2: switch the install above to ".[all]".)
-RUN python -m playwright install --with-deps chromium || echo "WARN: chromium not installed; fetch_url will degrade"
+# Optional browser backend (crawl4ai + Playwright chromium). The chromium download CDN must be on
+# the server egress allowlist or the install step fails (non-fatal: fetch_url then stays on the http
+# backend). To enable: appeal the CDN host(s) shown by `playwright install --dry-run chromium`, then
+# rebuild and set AER_FETCH_BACKEND=browser (or auto) in .env.
+RUN if [ "$WITH_BROWSER" = "1" ]; then \
+        pip install -e ".[browser]" \
+        && (python -m playwright install --with-deps chromium \
+            || echo "WARN: chromium not installed (CDN blocked?); fetch_url stays on the http backend"); \
+    fi
 
 # Runtime assets
 COPY config ./config

@@ -43,11 +43,10 @@ services:
       - ../config:/app/config          # edit pipeline.yaml without rebuilding
       - ../src:/app/src                # mount source so code changes need no image rebuild
       - ../scripts:/app/scripts
-      # --- Output/cache mounts (enable per milestone). On the NFS share these dirs must be
-      #     PRE-CREATED by the user first (Docker runs as root and root-squash blocks mkdir):
-      #         mkdir -p ../artifacts ../vault_data && chmod 777 ../artifacts ../vault_data
-      # - ../vault_data:/app/vault_data  # M1: duplicated READ-ONLY wiki seed
-      # - ../artifacts:/app/artifacts    # M2: persisted research run folders
+      # --- Output mounts. On the NFS share, PRE-CREATE these dirs first (Docker runs as root and
+      #     root-squash blocks mkdir): `mkdir -p ../artifacts && chmod 777 ../artifacts`
+      - ../artifacts:/app/artifacts      # M1 Slice 2: persisted research run folders
+      # - ../vault_data:/app/vault_data  # later: duplicated READ-ONLY wiki seed
       # - hf-cache:/app/.hf_cache        # M2: embedding/reranker weights, cached across runs
 
 # volumes:

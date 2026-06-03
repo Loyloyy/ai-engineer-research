@@ -1,0 +1,14 @@
+# Pipeline knobs (non-secret). Machine-specific values (model ids, endpoints, private
+# model paths) live in .env, NOT here. Env vars override these where noted in config.py.
+
+research:
+  # Role that drives the LEAD agent. M0 validates this role's tool-calling.
+  # Override at runtime with LEAD_ROLE in .env.
+  lead_role: strategic
+  max_iterations: 3
+  wall_clock_timeout_s: 1800
+  max_search_results_per_query: 5
+
+artifact:
+  enabled: true
+  model: smart   # role -> build_chat_model(role) for the extraction pass (M3)

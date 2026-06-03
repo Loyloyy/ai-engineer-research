@@ -1,0 +1,47 @@
+# Core stack. NO litellm proxy (roles bind their own endpoint via build_chat_model).
+#
+#   docker compose up -d searxng                         # start search (M1+)
+#   docker compose run --rm app python scripts/m0_toolcall_probe.py   # M0 validation
+#
+# Host-specific bits (mounting private model paths, GPU reservations, the served-model
+# endpoint if not host.docker.internal) go in docker-compose.override.yml (gitignored) —
+# see docker-compose.override.yml.example.
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: aer-searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+    restart: unless-stopped
+
+  # ---- The researcher app (run via `docker compose run`, not auto-started) ----
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ai-engineer-research-app
+    container_name: aer-app
+    profiles: ["app"]
+    env_file:
+      - ../.env
+    environment:
+      # inside the compose network, reach services by NAME (not localhost)
+      - SEARX_URL=http://searxng:8080
+    extra_hosts:
+      # lets the app reach a vLLM server running on the host (Linux/WSL/Mac)
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../config:/app/config          # edit pipeline.yaml without rebuilding
+      - ../src:/app/src                # mount source so code changes need no image rebuild
+      - ../scripts:/app/scripts
+      - ../artifacts:/app/artifacts    # persisted research run folders (M2+)
+      - ../vault_data:/app/vault_data  # duplicated READ-ONLY wiki seed (M1+)
+      - hf-cache:/app/.hf_cache        # embedding/reranker weights, cached across runs (M2+)
+
+volumes:
+  hf-cache:

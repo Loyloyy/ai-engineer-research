@@ -1,0 +1,55 @@
+[project]
+name = "ai-engineer-research"
+version = "0.1.0"
+description = "Stage 2 deep researcher: a multi-agent researcher (LangChain deepagents) over a curated AI-engineering wiki seed → gathers real code + web sources and analyzes limitations, alternatives, comparisons, and production-readiness."
+# deepagents requires Python >= 3.11.
+requires-python = ">=3.11"
+dependencies = [
+  # Agent harness over LangGraph. BETA — pinned; bump only after changelog review + pip-audit.
+  # Supply-chain vigilance applies to deepagents / langgraph / langchain (see DECISIONS).
+  "deepagents==0.6.7",
+  # Role -> ChatModel factory returns ChatOpenAI (OpenAI-compatible: vLLM + frontier).
+  "langchain-openai>=0.3",
+  "langchain>=1.0",
+  "python-dotenv",
+  "pyyaml",
+  "pydantic>=2",
+]
+
+[project.optional-dependencies]
+# M2 — web tooling (search is SearXNG via HTTP; extraction via Crawl4AI as a LangChain tool).
+# Heavy (torch + playwright chromium) — lazy-imported; only the server "all" build pulls these.
+web = [
+  "crawl4ai>=0.4",
+  "httpx",
+]
+# M2 — post-retrieval cross-encoder rerank (langchain 1.x: rerankers live in langchain-classic).
+rerank = [
+  "sentence-transformers",
+  "langchain-classic",
+  "langchain-huggingface",
+]
+# Upgrade path — semantic/BM25 vault + MCP sharing for Stage 3.
+vault = [
+  "rank-bm25",
+  "langchain-mcp-adapters",
+]
+# M3+ — optional presentation layer (no pipeline logic lives here).
+ui = ["gradio>=4"]
+# Server build — everything.
+all = [
+  "crawl4ai>=0.4", "httpx",
+  "sentence-transformers", "langchain-classic", "langchain-huggingface",
+  "rank-bm25", "langchain-mcp-adapters",
+  "gradio>=4",
+]
+
+[project.scripts]
+ai-engineer-research = "ai_engineer_research.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

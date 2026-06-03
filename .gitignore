@@ -1,0 +1,26 @@
+# ---- secrets / machine-specific config (NEVER commit) ----
+.env
+# host-specific docker overrides (model mounts, GPU, served-model id, endpoints) — keep out of git
+docker/docker-compose.override.yml
+docker-compose.override.yml
+
+# ---- python ----
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# ---- runtime outputs ----
+# Research artifacts (report.md, code/, comparison.md, notes/ per run) — kept out of git by default
+artifacts/
+# Duplicated read-only wiki working copy (Stage 1 seed source)
+vault_data/
+# URL content cache + eval output
+.aer_cache/
+eval_results.json
+
+# ---- model weights cache (mounted volume in docker, not git) ----
+.hf_cache/

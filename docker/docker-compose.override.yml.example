@@ -1,0 +1,19 @@
+# Copy to docker-compose.override.yml (GITIGNORED) on the server for host-specific config.
+# `docker compose` auto-merges it. Keep machine-specific paths/IPs/GPU settings ONLY here.
+#
+# Example: mount private local model weights (embeddings/reranker, M2+) read-only and point
+# .env's AER_EMBEDDING / AER_RERANK_MODEL at the in-container path.
+
+services:
+  app:
+    volumes:
+      # - /path/to/models:/models:ro
+      []
+    # GPU access for in-process embedding/rerank (M2+), if needed:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]

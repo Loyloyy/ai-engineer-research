@@ -87,19 +87,32 @@ def extract_artifact(
 ) -> DeepResearchArtifact:
     ext = _Extraction()
     if report_md.strip():
+        structured = None
         try:
             from ..models import build_chat_model  # lazy: keep the artifact package import-light
 
-            chat = build_chat_model(model, temperature=0.1)
-            ext = chat.with_structured_output(_Extraction).invoke(
-                [
-                    {"role": "system", "content": _SYSTEM},
-                    {"role": "user", "content": _user_prompt(topic, brief, report_md, sources)},
-                ]
-            )
-        except Exception as e:  # noqa: BLE001 — never fail the run on extraction; keep the report
-            logger.warning("artifact extraction failed (%s); returning content-light artifact", e)
-            ext = _Extraction()
+            structured = build_chat_model(model, temperature=0.1).with_structured_output(_Extraction)
+        except Exception as e:  # noqa: BLE001 — model unavailable → keep the report, skip extraction
+            logger.warning("extraction model unavailable (%s); returning content-light artifact", e)
+
+        if structured is not None:
+            msgs = [
+                {"role": "system", "content": _SYSTEM},
+                {"role": "user", "content": _user_prompt(topic, brief, report_md, sources)},
+            ]
+            for attempt in (1, 2):  # one stricter retry before giving up
+                try:
+                    ext = structured.invoke(msgs)
+                    break
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("artifact extraction attempt %d failed: %s", attempt, e)
+                    if attempt == 1:
+                        msgs.append({
+                            "role": "user",
+                            "content": "Return STRICT JSON matching the schema exactly. Use an empty list for any field with no support; do not invent data.",
+                        })
+                    else:
+                        ext = _Extraction()  # content-light fallback
 
     artifact = DeepResearchArtifact(
         id=artifact_id,

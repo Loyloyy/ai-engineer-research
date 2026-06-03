@@ -31,6 +31,8 @@ CODE_SCOUT = {
         "files each into `code/<owner-repo>/<filename>` using write_file — fetch raw files via "
         "fetch_url on https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>.\n"
         f"{_GROUNDING}\n"
+        "Before returning, write your full findings (repos evaluated, files saved, key implementation "
+        "notes) to `notes/code-scout.md` using write_file.\n"
         "RETURN a concise summary: the key repos (full_name, ★, license, url), which files you saved "
         "(paths under code/), and notable implementation details / patterns. Do not paste large code "
         "into the summary — it's on disk."
@@ -50,6 +52,7 @@ LANDSCAPE = {
         "pypi_package to find and characterize alternatives. For EACH alternative gather: name, one-line "
         "what-it-is, maturity (stars/license/activity), key differentiators vs the subject, and URL.\n"
         f"{_GROUNDING}\n"
+        "Before returning, write your full per-alternative details to `notes/landscape.md` via write_file.\n"
         "RETURN a structured per-alternative list (one block per alternative with the fields above). The "
         "lead builds the comparison matrix from your data — you do not write comparison.md."
     ),
@@ -71,6 +74,8 @@ MATURITY = {
         "unverified). Distinguish vendor-sanitized claims (README/model-card) from practitioner reality "
         "(issues/forums).\n"
         f"{_GROUNDING}\n"
+        "Before returning, write your full assessment (all signals, issues WITH their URLs, evidence) to "
+        "`notes/maturity.md` via write_file.\n"
         "RETURN: maturity signals (version/activity/adoption), concrete limitations + failure modes WITH "
         "evidence, license/cost, production-usage evidence, and a HIGH/MED/LOW confidence tag per claim."
     ),
@@ -87,6 +92,8 @@ FOCUSED_INVESTIGATOR = {
         "You are a focused investigator. Investigate EXACTLY what the task instruction asks — nothing "
         "more. Use any tools (web_search, fetch_url, github_*/hf_*/pypi_*).\n"
         f"{_GROUNDING}\n"
+        "Before returning, write your findings to `notes/focused-<short-slug>.md` (derive a short slug "
+        "from your task) via write_file.\n"
         "RETURN a concise, sourced summary answering the specific question you were given."
     ),
 }

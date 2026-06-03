@@ -68,7 +68,13 @@ keep on-prem for summarize/extract. The probe prints the endpoint + served id it
 
 ## Status
 
-M0 scaffold. See `DECISIONS.md` for architecture and the M0→M3 milestone plan.
+- **M0** ✅ on-prem tool-calling validated · **M1** ✅ lean agentic loop (scope→gather→reflect→cited
+  report + artifact) · **M2** ✅ multi-agent (code-scout/landscape/maturity + structured GitHub/HF/PyPI
+  tools + `code/**` gathering); Context7 MCP pending egress appeal · **M3** ✅ Stage-3 contract documented.
+- Multi-agent mode is opt-in via `AER_MULTI_AGENT=1` (lean M1 is the default).
+- **Stage-2 → Stage-3 handoff contract:** [`docs/STAGE3_CONTRACT.md`](docs/STAGE3_CONTRACT.md).
+
+See `DECISIONS.md` for architecture and the full milestone history.
 
 ## Data hygiene
 

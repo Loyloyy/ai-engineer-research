@@ -259,6 +259,38 @@ over-fragment. Final roster:
 **M2 build order:** structured-API tools (GitHub → HF → PyPI; the code-scout substrate, appeal-independent)
 → Context7 MCP (when appealed) → the 3 subagents + dynamic spawn + lead synthesis + `code/**` output.
 
+**M2 multi-agent VALIDATED (2026-06-03).** Structured tools (GitHub/HF/PyPI) built + GitHub live-tested.
+Subagent topology built (`subagents.py`: code-scout/landscape/maturity + focused-investigator; lead
+holds full toolset, subagents inherit it incl. filesystem since deepagents `tools=` REPLACES inherited)
+and opt-in via `AER_MULTI_AGENT=1` (lean M1 stays default). Validated run produced: `code/**` with 7
+real source files (code-scout's write_file works), an analyst-grade `comparison.md` matrix (9 frameworks
++ pairwise deep-dives + decision matrix, lead-synthesized from subagent summaries), report.md, and the
+artifact. GLM-5 drove the delegation loop with no recursion error. **Remaining M2:** Context7 MCP (waits
+on the egress appeal, not yet filed).
+
+**Subagent transparency:** each subagent now also writes its full findings to `notes/<name>.md`
+(code-scout/landscape/maturity + focused-<slug>) before returning its summary — inspectable per run,
+for debugging/trust. Lead still synthesizes from the returned summaries (not the notes).
+
+**Grounding spot-check PASSED (2026-06-03).** Verified the multi-agent run's artifact: issue #573 is
+real and correctly cited; 23 sources are all genuinely-fetched URLs (raw source files + GitHub issue
+pages the agent actually fetch_url'd + the NVIDIA AI-Q production blog); 22 findings all cite resolving
+sources with confidence, and the "production-ready" hypothesis is refuted citing 4 specific issues. No
+prompt fix needed — the maturity→extraction path grounds issues with URLs as designed.
+
+## M3 — Stage-3 contract documented (2026-06-04)
+
+- **`docs/STAGE3_CONTRACT.md`** written: run-folder layout, full `DeepResearchArtifact` field reference,
+  loading API, `model_versions` (roles + coverage) semantics, field→PoC-generation mapping, and
+  stability guarantees (stable: the `run_research` signature, artifact field names/types, run-folder
+  filenames, the evidence_id→Source citation invariant; advisory: prose structure, subagent roster).
+  Per the mandate this is the contract ONLY — **Stage 3 is not built here**.
+- **Light extraction hardening:** `extract_artifact` now gives the structured-output pass one stricter
+  retry before falling back to a content-light artifact (the report is always preserved). Grounding
+  quality was already verified strong (see the M2 spot-check), so no deeper extraction rework was needed.
+- **Milestones M0–M3 complete.** Remaining open work is appeal-gated only: wire **Context7 MCP** once
+  `context7.com` is unblocked (the one outstanding M2 item).
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

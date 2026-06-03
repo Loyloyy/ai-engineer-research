@@ -212,6 +212,53 @@ attributable [M2]; (b) direct `fetch_url` — raw files / readthedocs / arxiv PD
 snippets — signal-only, LOWER-confidence, never sole grounding. Coverage disclosure + confidence-by-evidence
 -type in the artifact tells downstream which half of the mandate is well-grounded.
 
+## M1 COMPLETE (2026-06-03)
+
+The lean agentic loop is validated end-to-end on the on-prem model via `run_research(...)`:
+- Slices: 1 tools (web_search + browserless fetch_url) · 2 bare gather · 3 scope/reflect/grounding +
+  domain-steering + miss-log + coverage · 4 extraction · 5 wire-up (core.run_research + CLI).
+- Verified run produced: `scope.md` (sharp Q + sub-questions + success criteria), `reflection.md`
+  (HIGH/MED/LOW confidence tiers + explicit confirm/contradict verdict on the seed's opinion),
+  `report.md` (cited, comprehensive), `coverage.json`, and `vNN.json` — a `DeepResearchArtifact` with
+  15 findings whose `evidence_ids` all resolve to fetched sources (citation validation working),
+  tech_stack/reference_repos/implementation_steps/open_questions, sources grounded in actually-fetched
+  URLs, and the coverage manifest embedded. GLM-5's `with_structured_output` (nested pydantic) worked —
+  no JSON-mode fallback needed.
+- Run folders are timestamped+sortable (`dra-YYYYMMDD-HHMMSS-rand`). Files land NFS-squashed
+  (nobody:nogroup, 0644) — readable; manage via the 777 parent.
+
+## M2 design — subagent roster (settled with planning chat, 2026-06-03)
+
+**Decompose by INVESTIGATION (distinct sources + skill), not by report section.** The handover's 5
+(code-scout/limitations/alternatives/comparison/prod-readiness) were organized by output section and
+over-fragment. Final roster:
+- **3 fixed default subagents** (each genuinely distinct + context-heavy enough to justify isolation):
+  - **code-scout** — find + gather real implementations (GitHub code-search/repos/READMEs/examples/
+    releases); pulls actual code into `code/**`.
+  - **landscape** — alternatives **+** comparison investigation ("what else exists & how it compares").
+    Outputs structured per-alternative attributes (does NOT own the matrix — see below).
+  - **maturity** — limitations **+** production-readiness ("is this real and safe for prod": failure
+    modes, gotchas, issues, who runs it in prod, license, cost, maturity signals).
+- **+ dynamic spawning:** the lead spawns a focused ad-hoc subagent during its reflect step when a topic
+  demands it (deep limitations pass, security pass, a **benchmarks/eval** pass for benchmark-centric
+  topics). Don't hardcode beyond the 3; use deepagents' dynamic `task` spawn.
+- **Lead owns synthesis + `comparison.md`.** Comparison is cross-cutting (needs subject attributes from
+  maturity/code-scout + alternative attributes from landscape); the lead already receives all three
+  subagents' *distilled summaries* and builds the matrix from those (works from summaries, not raw
+  context, so it doesn't bloat). Fallback if lead context gets heavy: landscape drafts the alternative
+  axes, lead folds in the subject row.
+- **No dedicated papers/benchmarks agent** — papers (arxiv/HF-papers) is a SOURCE serving all three →
+  make it a shared tool, not a pass. ("Benchmarks/eval" as an *investigation* is a dynamic-spawn candidate.)
+- **Bake in:** (1) the URL cache + run ledger are module-level singletons → already SHARED across
+  in-process subagent runs (dedups fetches; coverage spans the whole run) — keep it that way, not
+  per-agent. (2) **Lead owns cross-subagent contradiction reconciliation** — e.g. code-scout "README says
+  X" vs maturity "issues say X is broken in prod" → reconcile via confidence-tiering (primary-artifact
+  HIGH vs forum/snippet MED-LOW) and flag genuine disagreement with the wiki's `[CONTRADICTION: …]`
+  convention. That tension IS the mandate (honest limitations vs marketing), a feature not noise.
+
+**M2 build order:** structured-API tools (GitHub → HF → PyPI; the code-scout substrate, appeal-independent)
+→ Context7 MCP (when appealed) → the 3 subagents + dynamic spawn + lead synthesis + `code/**` output.
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

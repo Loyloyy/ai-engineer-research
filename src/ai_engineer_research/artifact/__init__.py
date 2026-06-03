@@ -1,9 +1,5 @@
-"""Structured, versioned research artifact (the Stage 2→3 contract) + persistence/validation.
-
-`extract_artifact` (the schema-constrained extraction pass) is model-coupled and lands with the
-M1 loop wiring — it imports lazily from `.extract` to keep this package importable without the
-model deps. Until then, schema/store/validate are fully usable offline.
-"""
+"""Structured, versioned research artifact (the Stage 2→3 contract) + extraction/persistence/validation."""
+from .extract import extract_artifact, sources_from_urls
 from .schema import (
     Architecture,
     DeepResearchArtifact,
@@ -24,6 +20,8 @@ __all__ = [
     "ReferenceRepo",
     "ImplementationStep",
     "DeepResearchArtifact",
+    "extract_artifact",
+    "sources_from_urls",
     "new_artifact_id",
     "validate_citations",
     "save",

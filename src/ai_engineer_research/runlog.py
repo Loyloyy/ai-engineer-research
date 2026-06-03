@@ -29,6 +29,10 @@ class FetchLedger:
     def record(self, url: str, host: str, outcome: str) -> None:
         self.attempts.append({"url": url, "host": host, "outcome": outcome})
 
+    def fetched_urls(self) -> list[str]:
+        """URLs that actually returned content — the verifiable sources for the artifact."""
+        return [a["url"] for a in self.attempts if a["outcome"] == OK]
+
     def manifest(self) -> dict:
         outcomes = Counter(a["outcome"] for a in self.attempts)
         ok_hosts = sorted({a["host"] for a in self.attempts if a["outcome"] == OK})

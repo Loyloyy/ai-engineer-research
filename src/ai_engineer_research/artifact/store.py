@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .schema import DeepResearchArtifact
@@ -17,7 +18,15 @@ ARTIFACTS_ROOT = Path("artifacts")
 
 
 def new_artifact_id() -> str:
-    return f"dra-{uuid.uuid4().hex[:12]}"
+    """Run/artifact id = sortable UTC timestamp + short random suffix.
+
+    e.g. `dra-20260603-153045-a1b2c3`. The `dra-<YYYYMMDD>-<HHMMSS>-` prefix makes run folders
+    human-readable and chronologically sortable (`ls` orders by date); the suffix disambiguates
+    runs within the same second. Timestamp is UTC, matching the artifact's `generated_at`.
+    The id is created once at v1 and preserved across refinement versions (lineage key).
+    """
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return f"dra-{ts}-{uuid.uuid4().hex[:6]}"
 
 
 def _dir(artifact_id: str, root: Path) -> Path:

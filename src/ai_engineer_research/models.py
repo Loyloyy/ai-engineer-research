@@ -57,13 +57,17 @@ def build_chat_model(role: str, **overrides) -> ChatOpenAI:
         raise ValueError(f"Unknown role {role!r}; expected one of {ROLES}.")
 
     prefix = role.upper()
+    # Long multi-agent runs make big generations on long contexts → a single call can exceed 120s,
+    # and a timeout aborts the whole run. Default generously; tune via env without code change.
+    timeout_s = float(os.environ.get("AER_LLM_TIMEOUT_S", "300"))
+    max_retries = int(os.environ.get("AER_LLM_MAX_RETRIES", "3"))
     params: dict = {
         "model": _require(f"{prefix}_MODEL"),
         "base_url": _require(f"{prefix}_API_BASE"),
         # vLLM accepts any non-empty key; allow the .env to omit it.
         "api_key": os.environ.get(f"{prefix}_API_KEY", "").strip() or "not-needed",
-        "max_retries": 2,
-        "timeout": 120,
+        "max_retries": max_retries,
+        "timeout": timeout_s,
     }
     params.update(_ROLE_DEFAULTS.get(role, {}))
     params.update(overrides)

@@ -40,7 +40,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     cov = artifact.model_versions.get("coverage", {})
     if cov:
-        print(f"coverage: fetched_ok={cov.get('fetched_ok')} blocked/failed={cov.get('blocked_or_failed')}")
+        elapsed = cov.get("elapsed_s")
+        trunc = " [TRUNCATED — partial result]" if cov.get("truncated") else ""
+        print(
+            f"coverage: fetched_ok={cov.get('fetched_ok')} blocked/failed={cov.get('blocked_or_failed')}"
+            + (f" elapsed={elapsed}s" if elapsed is not None else "")
+            + trunc
+        )
     print(f"\n--- report.md ({len(report)} chars) ---\n{report[:4000]}")
     if not report:
         print("(no report produced)")

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
 from .artifact import new_artifact_id
@@ -187,13 +188,24 @@ def run_gather(
         "research run %s starting (mode=%s lead_role=%s) -> %s",
         run_id, "multi-agent" if use_multi else "lean", cfg.lead_role, run_dir,
     )
-    agent.invoke(
-        {"messages": [{"role": "user", "content": _task(topic, brief)}]},
-        config={"recursion_limit": _RECURSION_LIMIT},
-    )
 
-    # Coverage manifest from the fetch ledger (objective grounding telemetry + round-2 appeal evidence).
-    coverage = current_ledger().manifest()
+    # Resilience: a single LLM timeout / tool error mid-run should NOT throw away an expensive run.
+    # On failure we mark the run truncated and salvage whatever was written to disk (scope/notes/
+    # code/report-if-any) so the artifact still captures the work done.
+    t0 = time.monotonic()
+    ledger = current_ledger()
+    try:
+        agent.invoke(
+            {"messages": [{"role": "user", "content": _task(topic, brief)}]},
+            config={"recursion_limit": _RECURSION_LIMIT},
+        )
+    except Exception as e:  # noqa: BLE001 — salvage instead of crashing the whole run
+        ledger.truncated = True
+        logger.warning("run %s TRUNCATED by %s: %s — salvaging partial output", run_id, type(e).__name__, e)
+    finally:
+        ledger.elapsed_s = time.monotonic() - t0
+
+    coverage = ledger.manifest()  # now includes elapsed_s + truncated
     try:
         (run_dir / "coverage.json").write_text(json.dumps(coverage, indent=2))
     except OSError as e:
@@ -201,10 +213,10 @@ def run_gather(
 
     report_md = _read(run_dir, "report.md")
     if not report_md:
-        logger.warning("run %s finished but produced no report.md in %s", run_id, run_dir)
+        logger.warning("run %s produced no report.md%s", run_id, " (truncated)" if ledger.truncated else "")
     logger.info(
-        "run %s done: fetched_ok=%d blocked/failed=%d (blocked hosts: %s)",
-        run_id, coverage["fetched_ok"], coverage["blocked_or_failed"],
-        ", ".join(coverage["blocked_hosts"][:10]) or "none",
+        "run %s done in %.0fs%s: fetched_ok=%d blocked/failed=%d",
+        run_id, ledger.elapsed_s or 0.0, " [TRUNCATED]" if ledger.truncated else "",
+        coverage["fetched_ok"], coverage["blocked_or_failed"],
     )
     return report_md, run_dir, run_id

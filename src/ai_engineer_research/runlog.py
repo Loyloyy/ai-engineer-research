@@ -25,6 +25,8 @@ ERROR = "error"                 # other failure
 @dataclass
 class FetchLedger:
     attempts: list[dict] = field(default_factory=list)
+    elapsed_s: float | None = None   # wall-clock of the run (set by the run driver)
+    truncated: bool = False          # True if the run ended early (error/timeout) → partial output
 
     def record(self, url: str, host: str, outcome: str) -> None:
         self.attempts.append({"url": url, "host": host, "outcome": outcome})
@@ -41,6 +43,8 @@ class FetchLedger:
             {a["host"] for a in self.attempts if a["outcome"] in (BLOCKED_SKIP, RESET, ERROR) and a["host"]}
         )
         return {
+            "elapsed_s": round(self.elapsed_s, 1) if self.elapsed_s is not None else None,
+            "truncated": self.truncated,
             "fetch_attempts": len(self.attempts),
             "fetched_ok": outcomes.get(OK, 0),
             "empty": outcomes.get(EMPTY, 0),

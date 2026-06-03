@@ -291,6 +291,20 @@ prompt fix needed — the maturity→extraction path grounds issues with URLs as
 - **Milestones M0–M3 complete.** Remaining open work is appeal-gated only: wire **Context7 MCP** once
   `context7.com` is unblocked (the one outstanding M2 item).
 
+## Run robustness + timing (2026-06-04)
+
+A multi-agent run (topic "kubernetes") worked impressively — dozens of real fetches (kubernetes.io
+docs/CVE-feed/case-studies, raw K8s source files, every alternative repo) — but **crashed** on a single
+`openai.APITimeoutError`: one vLLM call exceeded the 120s timeout (long synthesis and/or concurrent
+subagent calls loading the single endpoint), and that one failure aborted the entire expensive run.
+
+Fixes: (1) **timing** — `run_gather` records wall-clock `elapsed_s` (in the run log, `coverage.json`,
+and CLI summary). (2) **resilience** — `agent.invoke` is wrapped; a mid-run error marks the run
+`truncated`, salvages whatever reached disk (scope/notes/code/partial report), still writes coverage,
+and returns a (content-light if needed) artifact rather than crashing. (3) **timeout** — per-call LLM
+timeout 120→**300s** + retries 2→**3**, env-tunable (`AER_LLM_TIMEOUT_S` / `AER_LLM_MAX_RETRIES`).
+Deferred: enforced wall-clock cap + LangGraph checkpointer (resume across runs) if long runs remain flaky.
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

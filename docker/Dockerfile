@@ -1,9 +1,8 @@
 # ai-engineer-research app image — runs the deep researcher in a container (no host venv).
 # deepagents requires Python >= 3.11.
 #
-# M0/M1: lean base deps only (deepagents + langchain-openai). M2 adds the web/rerank extras
-# (crawl4ai + torch + playwright chromium) — flip the install line to ".[all]" and re-enable the
-# playwright step below when you reach M2.
+# M1: base + web extras (httpx for search, crawl4ai + playwright chromium for fetch_url).
+# M2 adds rerank/vault/ui — flip the install to ".[all]" then.
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -19,12 +18,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install deps first (better layer caching)
 COPY pyproject.toml ./
 COPY src ./src
-RUN pip install --upgrade pip && pip install -e .
+RUN pip install --upgrade pip && pip install -e ".[web]"
 
-# --- M2: uncomment for the full web/rerank stack ---
-# RUN pip install -e ".[all]"
-# Chromium + OS deps for Crawl4AI. Non-fatal: some networks block the Playwright CDN.
-# RUN python -m playwright install --with-deps chromium || echo "WARN: chromium not installed"
+# Chromium + OS deps for Crawl4AI's fetch_url. Non-fatal: some networks block the Playwright
+# CDN — if so the build still succeeds; fetch_url then degrades to "could not retrieve" and the
+# run continues on search snippets. (M2: switch the install above to ".[all]".)
+RUN python -m playwright install --with-deps chromium || echo "WARN: chromium not installed; fetch_url will degrade"
 
 # Runtime assets
 COPY config ./config

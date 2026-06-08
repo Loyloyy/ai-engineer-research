@@ -37,6 +37,11 @@ Code is authored locally and run on the server in Docker (no host venv). On the 
 
 > The server runs **`docker-compose` v1** (hyphenated). Commands below use that form.
 
+> **Shared services first.** Search (SearXNG) and optional tracing (Langfuse) live in the separate
+> [`service-depot`](../service-depot) repo and are reached over the `depot-net` network. Bring them up
+> before running the app: in `service-depot`, `./depot setup` then `./depot up stage-2`. A run will error
+> with `network depot-net … not found` if you skip this.
+
 ```bash
 cp .env.example .env            # then fill in the role triples (all roles can point at the same model)
 cp docker/docker-compose.override.yml.example docker/docker-compose.override.yml   # optional host bits
@@ -142,7 +147,7 @@ behavior change and no dependency on the stack. See [`service-depot`](../service
 
 - **M0** ✅ on-prem tool-calling validated · **M1** ✅ lean agentic loop (scope→gather→reflect→cited
   report + artifact) · **M2** ✅ multi-agent (code-scout/landscape/maturity + structured GitHub/HF/PyPI
-  tools + `code/**` gathering); Context7 MCP pending egress appeal · **M3** ✅ Stage-3 contract documented.
+  tools + `code/**` gathering); Context7 MCP pending source reachability · **M3** ✅ Stage-3 contract documented.
 - **Crash-resume** ✅ checkpointed runs (LangGraph SqliteSaver) with auto-retry + manual `--resume` and
   list/clean/resume-all management commands (validated end-to-end on the server, incl. multi-agent).
 - **Observability** ✅ optional self-hosted Langfuse tracing (`AER_TRACING`, off by default); backend in

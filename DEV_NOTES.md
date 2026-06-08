@@ -40,37 +40,37 @@ specifics — those live in `.env`). Newest sections appended over time. See `DE
   before building any topology** on an unvalidated model.
 - **Per-call timeout matters a lot** (see "Long runs" below) — default 120s is too low; we use 300s.
 
-## Egress allowlist (the biggest design constraint)
+## Restricted outbound network (the biggest design constraint)
 
-The server is behind a **hard egress allowlist** — most of the web TLS-resets ("Connection reset by
-peer"). This shaped the whole researcher.
+The deploy environment has **limited outbound network access** — only a subset of the public web is
+reachable; unreachable hosts fail with a connection reset ("Connection reset by peer"). This shaped the
+whole researcher.
 
-- **Map it empirically, don't guess.** `scripts/egress_probe.py` classifies ~120 domains as
-  reachable / RESET / DNS-fail / timeout. ~28/122 were reachable.
+- **Map it empirically, don't guess.** `scripts/reachability_probe.py` classifies the candidate source
+  domains as reachable / RESET / DNS-fail / timeout, so source selection is grounded in reality.
 - **Reachable substrate:** GitHub (repos/raw/api/codeload/objects), `*.github.io`, Hugging Face
-  (models/api/papers/docs/blog + `discuss.huggingface.co`), PyPI, all container registries, NVIDIA,
-  a few official docs (python/k8s/docker), Google + Bing. **Blocked:** arxiv, StackOverflow, Wikipedia,
-  nearly all 3rd-party project docs, all blogs, npm/crates/maven.
-- **There is NO proxy escape hatch** — `web.archive.org`, `archive.org`, `r.jina.ai`, and all CDNs
-  (jsdelivr/unpkg/cloudflare) all reset. Don't build archive/reader-proxy retry logic; it won't work.
+  (models/api/papers/docs/blog + `discuss.huggingface.co`), PyPI, container registries, a few official
+  docs (python/k8s/docker), Google + Bing. Many papers/Q&A/blog sources are **not reachable**.
+- **No proxy escape hatch** — archive/reader-proxy services and public CDNs are unreachable too. Don't
+  build archive/reader-proxy retry logic; it won't help here.
 - **Design implications:**
-  - `web_search` annotates each hit `[✓]`(reachable)/`[✗]`(blocked) so the model prefers fetchable URLs.
-  - `fetch_url` **fast-skips** known-blocked hosts (instant note, no wasted turn). The reachable set is
-    `domains.py`, **env-overridable** (`AER_REACHABLE_DOMAINS`) so appealed domains expand it with zero
-    code change (appeal-pending domains are pre-included → they "just start working" when granted).
+  - `web_search` annotates each hit `[✓]`(reachable)/`[✗]`(unreachable) so the model prefers fetchable URLs.
+  - `fetch_url` **fast-skips** known-unreachable hosts (instant note, no wasted turn). The preferred set is
+    `domains.py`, **env-overridable** (`AER_REACHABLE_DOMAINS`) so it expands with zero
+    code change if more sources become reachable (candidate domains are pre-included → they "just start working").
   - **Structured APIs beat scraping** where they exist (GitHub/HF/PyPI REST) — cleaner, attributable,
-    and they're on the allowlist. This is the M2 code-scout substrate.
-  - **Per-run miss-log** (`runlog.py`) records blocked-host attempts → evidence for round-2 appeals.
+    and reliably reachable. This is the M2 code-scout substrate.
+  - **Per-run miss-log** (`runlog.py`) records unreached-source attempts → coverage telemetry.
 
 ## Headless browser (Crawl4AI / Playwright)
 
-- **The Playwright browser-download CDN (`cdn.playwright.dev`) is egress-blocked**, so `playwright
-  install chromium` fails in the image build (silently, if you `|| echo` it) and the browser is absent
-  at runtime. Symptom: `BrowserType.launch: Executable doesn't exist …`.
+- **The Playwright browser-download CDN (`cdn.playwright.dev`) isn't reachable** from the deploy
+  environment, so `playwright install chromium` fails in the image build (silently, if you `|| echo` it)
+  and the browser is absent at runtime. Symptom: `BrowserType.launch: Executable doesn't exist …`.
 - **Decision: `fetch_url` is browserless by default** — `httpx` + `trafilatura` (clean
   boilerplate-stripped markdown). Research sources (GitHub/docs/blogs/arxiv) are static HTML; a browser
-  is overkill *and* its CDN is blocked anyway. Browser path (Crawl4AI) is **opt-in** via
-  `AER_FETCH_BACKEND=browser|auto`, gated on appealing the CDN. `auto` uses the browser only if a
+  is overkill *and* its CDN isn't reachable anyway. Browser path (Crawl4AI) is **opt-in** via
+  `AER_FETCH_BACKEND=browser|auto`, gated on the CDN being reachable. `auto` uses the browser only if a
   chromium binary is actually present, else falls back to http.
 - **Browser installs must happen at image-BUILD time** (a Dockerfile `RUN`), not via
   `docker-compose run --rm` (which discards the container — the download vanishes).
@@ -158,9 +158,9 @@ Pinned `deepagents==0.6.7`. Verified against the docs/reference rather than gues
   `langfuse_session_id` / `langfuse_tags` / `langfuse_user_id`, NOT the handler constructor.
 - **Tolerated-absent + env-gated** (mirrors the checkpointer): `AER_TRACING` off by default; `langfuse` is
   an optional `obs` extra; `build_tracer()` returns None if disabled/absent → zero behavior change.
-- **Network is opt-in via the override**, not the base compose — a plain run with tracing off must not
-  require `depot-net` to exist. (Joining networks in the override means also listing `default`, else the
-  app loses searxng.)
+- **The app joins `depot-net` in the BASE compose** — Phase 4 moved searxng into depot, so the network is
+  required for every run (search + tracing both come from depot). `./depot up stage-2` must be up first; a
+  bare `docker compose run app` errors with "network depot-net … not found" if depot isn't up.
 - **Langfuse v3 self-host needs `docker compose` v2** (the app stack historically used v1). `depot setup`
   checks this. **Local-disk volumes only** — ClickHouse/MinIO misbehave on NFS (named volumes use Docker's
   local driver by default; relocate the data-root if it's on NFS).
@@ -170,17 +170,17 @@ Pinned `deepagents==0.6.7`. Verified against the docs/reference rather than gues
 
 ## Grounding discipline (what makes it a *researcher*, not a chatbot)
 
-- **The failure mode to avoid:** early on, with nearly all fetches egress-blocked, the agent produced a
+- **The failure mode to avoid:** early on, with many fetches unreachable, the agent produced a
   confident, polished report built from **search snippets + parametric memory** — *not* fetched sources.
   For a research tool that's the cardinal sin.
 - **Rules baked into the prompts:** cite ONLY sources actually fetched (`fetch_url` returned content) or
-  structured-API results; mark snippet/blocked sources `(unverified)`; never backfill gaps from
+  structured-API results; mark snippet/unfetched sources `(unverified)`; never backfill gaps from
   background knowledge; reflect with confidence tiers (primary artifacts = HIGH, forum/snippet = MED/LOW).
 - **Ground evidence in the ledger.** The artifact's `sources` are built from the URLs the run *actually
   fetched* (`runlog.fetched_urls()`), and `validate_citations` drops any `evidence_id` that doesn't
   resolve. Verified in practice: issue numbers cited in reports resolved to real fetched issue pages.
 - **Coverage manifest travels with the artifact** (`model_versions.coverage`) so downstream consumers
-  know the grounding boundary (reachable vs blocked source classes).
+  know the grounding boundary (reachable vs unreached source classes).
 - **Challenge the seed.** Stage-1 wiki `## Opinions` are treated as **hypotheses to verify/refute**, not
   facts — the reflect step issues an explicit confirm/contradict verdict (observed working: it refuted a
   "production-ready out of the box" claim citing four specific issues).
@@ -195,8 +195,8 @@ Pinned `deepagents==0.6.7`. Verified against the docs/reference rather than gues
 
 ## Process learnings
 
-- **Empirical before policy.** We mapped egress (probe) *before* deciding what to appeal — turned a
-  guess into a precise, defensible short list (Context7 + arxiv + readthedocs + wiki + HN-API).
+- **Empirical before policy.** We mapped source reachability (probe) *before* deciding what to prioritize —
+  turned a guess into a precise, defensible short list (Context7 + arxiv + readthedocs + wiki + HN-API).
 - **De-risk-first slicing.** M1 was built as slices (tools → bare gather → scope/reflect → extraction →
   wire-up), each validated on the server before the next. M0 de-risked tool-calling before topology.
 - **Decompose subagents by INVESTIGATION, not report section.** The handover's 5 (one per output

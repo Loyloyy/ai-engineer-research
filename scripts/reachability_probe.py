@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Egress probe — map which domains are reachable vs blocked from inside the container.
+"""Reachability probe — map which source domains are reachable from inside the container.
 
-The server runs behind a hard egress allowlist (most sites TLS-reset). This maps reality across the
-domains a code/AI researcher actually needs, so we can (a) appeal a precise short list and (b) steer
-the agent toward reachable, high-value sources. All targets are public; this only does GETs.
+The deploy environment has limited outbound access (some sites fail with a connection reset). This maps
+reality across the domains a code/AI researcher actually needs, so we can steer the agent toward
+reliably-reachable, high-value sources. All targets are public; this only does GETs.
 
-    docker-compose run --rm app python scripts/egress_probe.py
+    docker-compose run --rm app python scripts/reachability_probe.py
 
 Classifications:
   OK <code>   reachable (any HTTP status, incl. 403/404 — the TLS handshake completed)
-  RESET       connection reset by peer  -> blocked by the egress firewall
-  DNS_FAIL    name resolution failed    -> DNS blocked for that host
+  RESET       connection reset by peer  -> not reachable from this environment
+  DNS_FAIL    name resolution failed    -> DNS not resolvable for that host
   TIMEOUT     no response in time       -> likely silently dropped
   TLS_ERR     TLS/cert problem ;  ERROR  other
 """
@@ -160,7 +160,7 @@ TARGETS: list[tuple[str, str]] = [
     ("escape-hatch", "https://r.jina.ai/https://github.com/langchain-ai/deepagents"),
 ]
 
-_UA = "Mozilla/5.0 (compatible; ai-engineer-research-egress-probe/0.1)"
+_UA = "Mozilla/5.0 (compatible; ai-engineer-research-reachability-probe/0.1)"
 _TIMEOUT = 6
 _WORKERS = 16
 
@@ -215,7 +215,7 @@ def main() -> int:
     for cat, url in TARGETS:
         if results[(cat, url)][0] == "OK":
             print(f"  [{cat}] {url}")
-    print("\n==== BLOCKED (candidates to appeal, by value) ====")
+    print("\n==== NOT REACHABLE (by value) ====")
     for cat, url in TARGETS:
         if results[(cat, url)][0] != "OK":
             print(f"  {results[(cat, url)][0]:<9} [{cat}] {url}")

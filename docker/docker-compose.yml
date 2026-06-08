@@ -1,6 +1,7 @@
-# Core stack. NO litellm proxy (roles bind their own endpoint via build_chat_model).
+# The researcher app. NO litellm proxy (roles bind their own endpoint via build_chat_model).
 #
-#   docker compose up -d searxng                         # start search (M1+)
+# Shared services (search + tracing) live in the separate `service-depot` repo and are reached over the
+# external `depot-net` network — bring them up FIRST: `./depot up stage-2` there. Then:
 #   docker compose run --rm app python scripts/m0_toolcall_probe.py   # M0 validation
 #
 # Host-specific bits (mounting private model paths, GPU reservations, the served-model
@@ -12,17 +13,6 @@
 version: "3.8"
 
 services:
-  searxng:
-    image: searxng/searxng:latest
-    container_name: aer-searxng
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./searxng:/etc/searxng:rw
-    environment:
-      - SEARXNG_BASE_URL=http://localhost:8080/
-    restart: unless-stopped
-
   # ---- The researcher app (run via `docker compose run`, not auto-started) ----
   app:
     build:
@@ -48,6 +38,14 @@ services:
       - ../artifacts:/app/artifacts      # M1 Slice 2: persisted research run folders
       # - ../vault_data:/app/vault_data  # later: duplicated READ-ONLY wiki seed
       # - hf-cache:/app/.hf_cache        # M2: embedding/reranker weights, cached across runs
+    networks:
+      # Shared services (searxng + langfuse-web) live in the `service-depot` repo on this external
+      # network. Bring them up first (`./depot up stage-2`); SEARX_URL / LANGFUSE_HOST resolve by name.
+      - depot-net
+
+networks:
+  depot-net:
+    external: true
 
 # volumes:
 #   hf-cache:

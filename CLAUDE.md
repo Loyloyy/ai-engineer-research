@@ -15,7 +15,7 @@
    chat) before big structural moves.
 
 ## Build / run model
-- Authored locally; **run on the H200 server in Docker** (no host venv/uv — do not install packages locally).
+- Authored locally; **run on the on-prem GPU server in Docker** (no host venv/uv — do not install packages locally).
 - The local box is Python 3.10; deepagents needs ≥3.11, so the agent runs only in the container.
 - The **user handles ALL git** (commit/push here, pull on server). Do NOT run git commands unless asked.
 - Reach in-network services by NAME (`http://searxng:8080`); reach host vLLM via `host.docker.internal`.
@@ -27,9 +27,10 @@ M0–M3 built & validated end-to-end (single-agent **and** multi-agent) on the o
 built & validated** (checkpointed runs + auto-retry + `--resume`/`--list`/`--clean`/`--resume-all`; see the
 "Run checkpointing + resume" entry in `DECISIONS.md`). **Observability built** (optional self-hosted Langfuse
 via `tracing.py`; backend in the sibling `service-depot` repo; locally validated, server trace-check pending).
-Only appeal-gated work remains: Context7 MCP once `context7.com` is unblocked. **Deferred:** migrating SearXNG
-into `service-depot` (search is core → would make `depot-net` mandatory for all runs). See `DECISIONS.md` for
-the full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` for the Stage 2→3 handoff.
+SearXNG + Langfuse now live in the sibling **`service-depot`** repo (shared services); the app reaches them
+over `depot-net` — bring depot up first. Only reachability-gated work remains: Context7 MCP if/when
+`context7.com` becomes reachable. See `DECISIONS.md` for the full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md`
+for the Stage 2→3 handoff.
 
 ## Layout (`src/ai_engineer_research/`)
 - `core.py` — `run_research(...)`, the stable contract (assemble brief → loop → extract → save).
@@ -39,7 +40,7 @@ the full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` fo
 - `models.py` — `build_chat_model(role)` → `ChatOpenAI` (role→model factory; env timeout/retries).
 - `config.py` — `RunConfig` + `load_config` (`.env` + `config/pipeline.yaml`).
 - `seed.py` — Stage-1 wiki page → research brief (Opinions=hypotheses, Sources, 1-hop links).
-- `domains.py` — reachable-domain policy (egress allowlist, env-overridable).
+- `domains.py` — preferred-source-domain policy (env-overridable).
 - `runlog.py` — per-run fetch ledger → miss-log + coverage manifest (+ elapsed/truncated); persisted to
   `ledger.json` for resume.
 - `checkpoint.py` — crash-resume via LangGraph SqliteSaver (shared `artifacts/checkpoints.sqlite`;
@@ -53,8 +54,9 @@ the full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` fo
   (M2 structured APIs). `WEB_TOOLS` (lean M1) vs `STRUCTURED_TOOLS`.
 - `artifact/` — `schema.py` (DeepResearchArtifact), `store.py`, `validate.py`, `extract.py`.
 - `cache/store.py` — URL-keyed content cache (shared across subagents). `cli.py` — CLI entrypoint.
-- `scripts/` — `m0_toolcall_probe.py`, `egress_probe.py`. `docker/` — Dockerfile + compose (searxng +
-  app; **no litellm**).
+- `scripts/` — `m0_toolcall_probe.py`, `reachability_probe.py`. `docker/` — Dockerfile + app compose (**no
+  litellm**; the app joins the external `depot-net`). Shared services (searxng + langfuse) live in the
+  sibling `service-depot` repo — bring them up first (`./depot up stage-2`).
 
 ## Key env knobs (all in gitignored `.env`)
 - `<ROLE>_MODEL/_API_BASE/_API_KEY` (strategic/smart/fast/judge) · `LEAD_ROLE` · `SEARX_URL`

@@ -1,8 +1,8 @@
 """Per-run fetch ledger — the miss-log + coverage manifest.
 
 Records every fetch_url attempt and its outcome. Two payoffs (DECISIONS: M1 discipline):
-  1. blocked-domain telemetry = evidence for round-2 egress appeals (what the agent actually wanted
-     but couldn't reach), and
+  1. unreached-source telemetry = coverage evidence (what the agent actually wanted but couldn't
+     reach), and
   2. a per-run coverage manifest so the report/artifact can disclose its grounding boundary
      (which source classes were reachable vs not).
 
@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 # Outcome vocabulary for a fetch attempt.
 OK = "ok"                       # content retrieved
 EMPTY = "empty"                 # reachable but no extractable content
-BLOCKED_SKIP = "blocked-skip"   # host not in reachable allowlist → skipped before the network call
-RESET = "reset"                 # egress firewall reset / unreachable at request time
+BLOCKED_SKIP = "blocked-skip"   # host not in the preferred-source set → skipped before the network call
+RESET = "reset"                 # connection reset / unreachable at request time
 ERROR = "error"                 # other failure
 
 
@@ -43,7 +43,7 @@ class FetchLedger:
     def manifest(self) -> dict:
         outcomes = Counter(a["outcome"] for a in self.attempts)
         ok_hosts = sorted({a["host"] for a in self.attempts if a["outcome"] == OK})
-        # Anything not OK and not empty is a reach failure worth appealing / noting.
+        # Anything not OK and not empty is a reach failure worth noting for coverage.
         blocked_hosts = sorted(
             {a["host"] for a in self.attempts if a["outcome"] in (BLOCKED_SKIP, RESET, ERROR) and a["host"]}
         )
@@ -56,7 +56,7 @@ class FetchLedger:
             "blocked_or_failed": outcomes.get(BLOCKED_SKIP, 0) + outcomes.get(RESET, 0) + outcomes.get(ERROR, 0),
             "by_outcome": dict(outcomes),
             "fetched_hosts": ok_hosts,
-            "blocked_hosts": blocked_hosts,  # round-2 appeal evidence
+            "blocked_hosts": blocked_hosts,  # unreached-source coverage evidence
         }
 
 

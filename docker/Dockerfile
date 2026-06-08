@@ -24,14 +24,14 @@ COPY src ./src
 # web = default fetch backend; obs = optional Langfuse tracing (lazy-imported, enabled via AER_TRACING).
 RUN pip install --upgrade pip && pip install -e ".[web,obs]"
 
-# Optional browser backend (crawl4ai + Playwright chromium). The chromium download CDN must be on
-# the server egress allowlist or the install step fails (non-fatal: fetch_url then stays on the http
-# backend). To enable: appeal the CDN host(s) shown by `playwright install --dry-run chromium`, then
-# rebuild and set AER_FETCH_BACKEND=browser (or auto) in .env.
+# Optional browser backend (crawl4ai + Playwright chromium). The chromium download CDN must be
+# reachable from the build environment or the install step fails (non-fatal: fetch_url then stays on
+# the http backend). To enable: ensure the CDN host(s) shown by `playwright install --dry-run chromium`
+# are reachable, then rebuild and set AER_FETCH_BACKEND=browser (or auto) in .env.
 RUN if [ "$WITH_BROWSER" = "1" ]; then \
         pip install -e ".[browser]" \
         && (python -m playwright install --with-deps chromium \
-            || echo "WARN: chromium not installed (CDN blocked?); fetch_url stays on the http backend"); \
+            || echo "WARN: chromium not installed (CDN unreachable?); fetch_url stays on the http backend"); \
     fi
 
 # Runtime assets

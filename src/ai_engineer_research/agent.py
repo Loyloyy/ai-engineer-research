@@ -3,7 +3,7 @@
 ONE lead agent with web_search + fetch_url over a real-disk filesystem backend rooted at the run
 folder. It runs scope → plan → gather → reflect → quality-stop, grounded in sources it actually
 fetched (never backfilled from parametric memory). Cheap discipline (DECISIONS: M1):
-domain-aware steering (✓/✗ in search), known-blocked fast-skip, a per-run miss-log, and a coverage
+domain-aware steering (✓/✗ in search), unreachable-host fast-skip, a per-run miss-log, and a coverage
 manifest. The rich structured-API tools + subagents are M2; the intelligence here is the LOOP.
 """
 from __future__ import annotations
@@ -42,7 +42,7 @@ success criteria are met.
 
 You have a file workspace (write_file / read_file / edit_file / ls) and these research tools:
 - web_search(query, max_results): ranked results, each marked [✓] (fetchable in full here) or [✗] \
-(egress-blocked — you only get its title/snippet, which is WEAK, UNVERIFIED signal).
+(not reachable from here — you only get its title/snippet, which is WEAK, UNVERIFIED signal).
 - fetch_url(url): returns a [✓] source's full content as clean text. A [✗]/blocked URL returns a \
 "not reachable" note — don't retry it; pick a [✓] source instead.
 

@@ -1,10 +1,10 @@
 """fetch_url tool — clean full-page extraction, with a selectable backend.
 
 Backend chosen via env `AER_FETCH_BACKEND` (see DECISIONS):
-  - "http"    (default-safe): httpx + trafilatura. No browser. Robust on the egress allowlist;
-               great for static sources (GitHub, docs, blogs, arxiv abstracts, raw files).
+  - "http"    (default-safe): httpx + trafilatura. No browser. Robust in a restricted-network
+               environment; great for static sources (GitHub, docs, blogs, arxiv abstracts, raw files).
   - "browser" : Crawl4AI + Playwright chromium. Renders JS. Requires the browser binary installed,
-               which needs the Playwright download CDN unblocked on the server egress allowlist.
+               which needs the Playwright download CDN to be reachable from the build environment.
   - "auto"    : use the browser backend if a chromium binary is actually present, else fall back to
                http; and if a browser fetch comes back empty, retry once over http.
 
@@ -30,7 +30,7 @@ from ..runlog import BLOCKED_SKIP, OK, RESET, record_fetch
 logger = logging.getLogger(__name__)
 
 _BACKEND_ENV = "AER_FETCH_BACKEND"  # auto | http | browser
-_SKIP_ENV = "AER_FETCH_SKIP_BLOCKED"  # "1"/"true" (default) → fast-skip hosts not in the reachable allowlist
+_SKIP_ENV = "AER_FETCH_SKIP_BLOCKED"  # "1"/"true" (default) → fast-skip hosts not in the preferred-source set
 # Cap returned content so a single huge page can't blow up the agent's context.
 # (Query-aware chunking + cross-encoder rerank is M2; this is the M1 guardrail.)
 _MAX_CHARS = 16000
@@ -69,7 +69,7 @@ def _fetch_http(url: str) -> tuple[str, str]:
             resp.raise_for_status()
             ctype = resp.headers.get("content-type", "").lower()
             text = resp.text
-    except Exception as e:  # noqa: BLE001 — blocked/paywall/403/timeout/TLS reset on egress
+    except Exception as e:  # noqa: BLE001 — blocked/paywall/403/timeout/connection reset
         logger.warning("fetch_url(http) request failed for %s: %s", url, e)
         return "", ""
 
@@ -174,10 +174,10 @@ def fetch_url(url: str) -> str:
     else:
         skip = os.environ.get(_SKIP_ENV, "1").strip().lower() not in ("0", "false", "no")
         if skip and not is_reachable(url):
-            # Known-blocked host (not in the reachable allowlist) → don't spend a network call/turn.
+            # Host not in the preferred-source set → don't spend a network call/turn.
             record_fetch(url, host, BLOCKED_SKIP)
             return (
-                f"[fetch_url: {host or url} is not reachable from here (egress-blocked). Skipped. "
+                f"[fetch_url: {host or url} is not reachable from here. Skipped. "
                 f"Use a reachable (✓) source instead; this domain's snippet is weak signal only.]"
             )
         backend = _resolve_backend()

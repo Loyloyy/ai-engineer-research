@@ -13,8 +13,8 @@ kept as the validated reference + source of reusable layers. Its `DECISIONS.md` 
 (tool-calling) ✅ · M1 (lean agentic loop → cited report + artifact) ✅ · M2 (multi-agent: code-scout/
 landscape/maturity + structured GitHub/HF/PyPI tools + `code/**`; opt-in `AER_MULTI_AGENT=1`) ✅ · M3
 (Stage-3 contract doc + extraction hardening) ✅ · robustness (timing + salvage-on-error + tuned
-timeouts) ✅ · subagent transparency (`notes/<name>.md`) ✅. **Only remaining: wire Context7 MCP once
-the egress appeal is granted (not yet filed).** Quickstart in `README.md`; gotchas in `DEV_NOTES.md`;
+timeouts) ✅ · subagent transparency (`notes/<name>.md`) ✅. **Only remaining: wire Context7 MCP if/when
+`context7.com` becomes reachable from the deploy environment.** Quickstart in `README.md`; gotchas in `DEV_NOTES.md`;
 handoff contract in `docs/STAGE3_CONTRACT.md`. The entries below are the chronological rationale log.
 
 ---
@@ -40,7 +40,7 @@ smart=writer/extraction · fast=summarize/sub-tasks · judge=eval (different fam
 **Repo / package name.** `ai-engineer-research` / `ai_engineer_research` (confirmed with user).
 Ported `deep_researcher` modules get their imports rewritten.
 
-**Build locally, validate on the H200 server (containerized).** Code is authored in this workspace
+**Build locally, validate on the on-prem GPU server (containerized).** Code is authored in this workspace
 and pushed via GitHub; the server pulls and runs everything in Docker (no host venv/uv). Therefore:
 tracked files are generic with placeholders; the real `.env` + `docker-compose.override.yml` are
 created on the server by the user. No local Python execution of the agent here (3.10 box; deepagents
@@ -137,54 +137,44 @@ weak caller through the reflection loop and conclude "agentic doesn't work."
 
 `web_search` (SearXNG/httpx) validated on the server first try. `fetch_url` initially used
 Crawl4AI + Playwright chromium (ported from the GPTR repo) but the browser **could not be installed**
-in the image: the Playwright browser-download CDN isn't on the server egress allowlist, so the build's
+in the image: the Playwright browser-download CDN isn't reachable from the deploy environment, so the build's
 `playwright install` failed (silently, via `|| echo`) and `fetch_url` had no browser at runtime.
 
 **Decision: dual-backend `fetch_url`, selected by `AER_FETCH_BACKEND` (auto|http|browser).** The
-DEFAULT path is **browserless** — httpx (egress-friendly, follows redirects) + trafilatura (clean
+DEFAULT path is **browserless** — httpx (lightweight, follows redirects) + trafilatura (clean
 boilerplate-stripped markdown) — because research sources (GitHub, docs, blogs, arxiv abstracts, raw
 files) are static HTML and need no browser. The **browser** path (Crawl4AI + Playwright chromium, JS
 rendering) is selectable for when it's needed, but requires the chromium binary, which requires the
-Playwright download CDN to be on the server egress allowlist. Install path: `playwright install
---dry-run chromium` prints the CDN host(s) → appeal them → rebuild (`WITH_BROWSER=1`, default) → set
+Playwright download CDN to be reachable from the build environment. Install path: `playwright install
+--dry-run chromium` prints the CDN host(s) → ensure they're reachable → rebuild (`WITH_BROWSER=1`, default) → set
 `AER_FETCH_BACKEND=browser` (or `auto`). `auto` uses the browser only if a chromium binary is present
-and falls back to http on an empty result. Graceful degradation holds throughout (blocked/empty →
+and falls back to http on an empty result. Graceful degradation holds throughout (unreachable/empty →
 informative note or http fallback, never a crash). (Earlier same-day note said "drop the browser from
 M1"; superseded — it's now optional-and-selectable rather than removed.)
 
-## Egress map — what's actually reachable (2026-06-03, measured via scripts/egress_probe.py)
+## Source-reachability strategy — design for a restricted network (2026-06-03)
 
-Probed 122 research/code domains from inside the container. **28 reachable, 94 TLS-reset.** The
-allowlist is ML-infra-shaped: pull-models/containers/packages is open, general web is not.
+The deploy environment has **limited outbound network access**: only a subset of the public web is
+reachable, and unreachable hosts fail with a connection reset rather than a clean error. Rather than
+fight this, the researcher is built around a small set of **high-value, reliably-reachable sources** and
+degrades gracefully on everything else. The reachable substrate it relies on:
 
-**Reachable substrate (rely on these):**
-- **GitHub** — github.com, raw.githubusercontent.com, api.github.com, codeload, objects.*, user-images.*
-  (only `gist.githubusercontent.com` is blocked). `*.github.io` works (langchain-ai.github.io, etc.).
-- **Hugging Face** — huggingface.co (+ /api, /papers, /docs, /blog), hf.co, discuss.huggingface.co.
-- **PyPI** — pypi.org + files.pythonhosted.org (no npm/crates/maven/conda/rubygems/nuget).
-- **Container registries** — hub.docker.com, registry-1.docker.io, ghcr.io, quay.io, NGC; developer.nvidia.com.
-- **Select docs** — docs.python.org, kubernetes.io, docs.docker.com.
-- **Search** — google.com, bing.com (so SearXNG discovery works; duckduckgo/brave/scholar blocked).
+- **Code forges** — GitHub (repos, raw, API, codeload, objects) + `*.github.io` docs.
+- **Model/dataset hub** — Hugging Face (site, API, papers, docs, forum).
+- **Package registries** — PyPI + files host; container registries (Docker Hub, GHCR, Quay, NGC).
+- **Select official docs + search** — python/k8s/docker docs; Google/Bing for discovery.
 
-**Blocked & notable:** arxiv (+ ar5iv/export/semanticscholar/openreview/aclanthology/PMLR/CVF), nearly all
-project docs (pytorch, sklearn, numpy, pandas, fastapi, vllm, pydantic, gradio, langchain docs, all
-vector-DB docs, MDN), StackOverflow, Wikipedia, all blogs (incl. openai/anthropic/langchain/pytorch),
-npm/crates/maven/conda. **No escape hatch:** web.archive.org, archive.org, r.jina.ai, and all CDNs
-(jsdelivr/unpkg/cloudflare) reset — so there is no proxy/Wayback workaround. Browser CDN
-(cdn.playwright.dev) also blocked → the Playwright browser path stays unavailable unless appealed.
+**Consequence.** Stage 2's CODE mandate is viable on this substrate (GitHub + HF + PyPI + github.io docs
++ search). The gaps are papers / 3rd-party tool docs / general Q&A / blogs. The agent must (a) prefer the
+reachable set, (b) not waste turns on hosts it can't reach, and (c) be honest about grounding when a key
+source is unreachable (never backfill from parametric memory). The preferred-source set is kept as
+env/config (env-overridable) so it expands with zero code change if more sources become reachable.
 
-**Consequence.** Stage 2's CODE mandate is viable NOW (GitHub + HF + PyPI + github.io docs + Google/Bing
-search). The gaps are papers / 3rd-party tool docs / StackOverflow / blogs. The agent must (a) prefer the
-reachable set, (b) not waste turns on hosts that reset, and (c) be honest about grounding when a key
-source is unreachable (never backfill from parametric memory). Reachable-domain preference is kept as
-env/config (env-overridable) so appealed domains expand it with zero code change.
+## Source prioritization + locked M1/M2 scope line (with planning chat, 2026-06-03)
 
-## Whitelist appeal (final) + locked M1/M2 scope line (with planning chat, 2026-06-03)
-
-**Appeal list submitted** (framed "documentation / papers / reference & community data sources"; tiers
-are severable — infra can grant/cut each line):
+**Highest-value source classes to pursue** (if/when reachable; severable, ordered by value):
 - **Tier 1 (docs + papers):** `context7.com` + `mcp.context7.com` (version-specific docs aggregator,
-  consumed via its MCP server — one appeal replaces dozens of doc-domain appeals); `arxiv.org` +
+  consumed via its MCP server — one integration replaces dozens of doc domains); `arxiv.org` +
   `export.arxiv.org` (full-text papers; HF/papers = abstracts only, not a substitute); `*.readthedocs.io`
   (wildcard — vendor-independent docs fallback so we're not single-pointed on Context7).
 - **Tier 2 (background + technical discussion):** `en.wikipedia.org` + `upload.wikimedia.org`;
@@ -192,21 +182,21 @@ are severable — infra can grant/cut each line):
   and over the Firebase API which is item-by-id only).
 - **Tier 3 (practitioner experience; severable, ordered by ease):** `stackoverflow.com` +
   `api.stackexchange.com`; then `medium.com` + `*.substack.com`.
-- **Reddit DROPPED from this appeal.** A domain grant ≠ access (free API dead; `oauth.reddit.com` needs a
-  registered app + token + rate-limit handling). Rely on search snippets now; appeal + build the OAuth
-  integration together in round-2 only if the miss-log shows missing signal concentrates on reddit.
-- **Already open — exploit, don't appeal:** full GitHub, HF (incl. `discuss.huggingface.co`, a reachable
+- **Reddit DROPPED.** A reachable domain ≠ access (free API dead; `oauth.reddit.com` needs a
+  registered app + token + rate-limit handling). Rely on search snippets now; revisit + build the OAuth
+  integration together only if the miss-log shows missing signal concentrates on reddit.
+- **Already reachable — exploit:** full GitHub, HF (incl. `discuss.huggingface.co`, a reachable
   practitioner forum → make first-class), PyPI, container registries, Google/Bing.
-- **Don't appeal:** more 3rd-party MCP doc servers (Context7 is the one; wrap GitHub/HF/PyPI REST as our
-  own local tools); Wayback/archive.org/r.jina.ai/CDNs (confirmed reset, no proxy — fast-fail, don't build
-  retry logic); npm/crates/maven/conda (Python-only scope).
+- **Don't pursue:** more 3rd-party MCP doc servers (Context7 is the one; wrap GitHub/HF/PyPI REST as our
+  own local tools); Wayback/archive.org/r.jina.ai/CDNs (confirmed unreachable, no proxy — fast-fail, don't
+  build retry logic); npm/crates/maven/conda (Python-only scope).
 
 **The M1/M2 line (locked).** Principle: *intelligence lives in the LOOP (M1), not the tool count (M2).*
 - **M1 — lean agentic loop (prove the LOOP, not the substrate).**
   Tools: `web_search` (SearXNG) + `fetch_url` (httpx+trafilatura, HTML only — already reaches open hosts
   like GitHub raw/README, HF pages, readthedocs-if-granted, as fetchable pages, not APIs).
-  Discipline (all cheap, all M1): known-blocked-host fast-skip; **per-run miss-log** (blocked-domain
-  telemetry = round-2 appeal evidence); snippet confidence-tagging; coverage-manifest scaffold in the artifact.
+  Discipline (all cheap, all M1): unreachable-host fast-skip; **per-run miss-log** (telemetry of which
+  sources couldn't be fetched = coverage evidence); snippet confidence-tagging; coverage-manifest scaffold in the artifact.
   Behavior: scope → plan (`write_todos`) → gather (evidence_ids) → reflect/gap-check (incl. contradictions
   vs the seed's attributed Opinions) → quality-driven stop. Single lead agent; headless non-blocking default,
   interactive optional scope gate. Deliver: cited `report.md` + `DeepResearchArtifact`.
@@ -267,8 +257,8 @@ over-fragment. Final roster:
   HIGH vs forum/snippet MED-LOW) and flag genuine disagreement with the wiki's `[CONTRADICTION: …]`
   convention. That tension IS the mandate (honest limitations vs marketing), a feature not noise.
 
-**M2 build order:** structured-API tools (GitHub → HF → PyPI; the code-scout substrate, appeal-independent)
-→ Context7 MCP (when appealed) → the 3 subagents + dynamic spawn + lead synthesis + `code/**` output.
+**M2 build order:** structured-API tools (GitHub → HF → PyPI; the code-scout substrate, always reachable)
+→ Context7 MCP (when reachable) → the 3 subagents + dynamic spawn + lead synthesis + `code/**` output.
 
 **M2 multi-agent VALIDATED (2026-06-03).** Structured tools (GitHub/HF/PyPI) built + GitHub live-tested.
 Subagent topology built (`subagents.py`: code-scout/landscape/maturity + focused-investigator; lead
@@ -277,7 +267,7 @@ and opt-in via `AER_MULTI_AGENT=1` (lean M1 stays default). Validated run produc
 real source files (code-scout's write_file works), an analyst-grade `comparison.md` matrix (9 frameworks
 + pairwise deep-dives + decision matrix, lead-synthesized from subagent summaries), report.md, and the
 artifact. The on-prem model drove the delegation loop with no recursion error. **Remaining M2:** Context7
-MCP (waits on the egress appeal, not yet filed).
+MCP (waits on `context7.com` becoming reachable).
 
 **Subagent transparency:** each subagent now also writes its full findings to `notes/<name>.md`
 (code-scout/landscape/maturity + focused-<slug>) before returning its summary — inspectable per run,
@@ -299,8 +289,8 @@ prompt fix needed — the maturity→extraction path grounds issues with URLs as
 - **Light extraction hardening:** `extract_artifact` now gives the structured-output pass one stricter
   retry before falling back to a content-light artifact (the report is always preserved). Grounding
   quality was already verified strong (see the M2 spot-check), so no deeper extraction rework was needed.
-- **Milestones M0–M3 complete.** Remaining open work is appeal-gated only: wire **Context7 MCP** once
-  `context7.com` is unblocked (the one outstanding M2 item).
+- **Milestones M0–M3 complete.** Remaining open work is reachability-gated only: wire **Context7 MCP** if/when
+  `context7.com` becomes reachable from the deploy environment (the one outstanding M2 item).
 
 ## Run robustness + timing (2026-06-04)
 
@@ -391,7 +381,7 @@ traces serve; (b) Stage 3 commits to Langfuse. So tracing is now worth wiring.
   the instance with its own project key. No cross-repo code, no secrets in tracked files.
 - **Shared infra lives in its own GENERIC repo `service-depot`** (sibling at `/mnt/d/aloy/personal/`), not
   inside a stage repo. Reasons (decided with the user): the repos are public portfolio pieces, so shared
-  *platform* services (Langfuse now; SearXNG, evals later) reading as their own thing demonstrates better
+  *platform* services (Langfuse + SearXNG; evals later) reading as their own thing demonstrates better
   judgment than burying a 6-service stack in one stage. Apps are pure consumers (env + a shared docker
   network `depot-net`); the repo is generic (not `ai-engineer-*`) because the services suit any app. Name
   chosen over `substrate`/`toolshed`/`shared-services`.
@@ -410,17 +400,18 @@ traces serve; (b) Stage 3 commits to Langfuse. So tracing is now worth wiring.
   pass; per-attempt tags carry mode + resume/attempt #.
 - **Where errors surface:** per-call failures (timeouts, subagent/tool/extraction exceptions) are auto-
   captured as ERRORED spans (pinpoint the failing node — the debugging win over coverage.json). The one LLM
-  call outside the graph (`extract_artifact`) is threaded the handler so it joins the same session. Egress
-  blocks stay graceful (normal tool output) — coverage.json remains the blocked-host tally.
+  call outside the graph (`extract_artifact`) is threaded the handler so it joins the same session. Unreachable
+  sources stay graceful (normal tool output) — coverage.json remains the unreached-source tally.
 - **Flush-on-exit is mandatory:** the app runs via ephemeral `docker compose run --rm`, so `flush_tracer()`
   runs in `run_gather`'s `finally` and after extraction, else batched spans are lost.
-- **Networking is opt-in:** the app joins `depot-net` via the gitignored compose *override* (not the base
-  compose), so a plain research run with tracing off needs no depot/network. Storage = local disk (named
-  volumes on Docker's local driver; ClickHouse/MinIO misbehave on NFS).
-- **SearXNG migration into `service-depot` = DEFERRED.** Moving search out of the app repo would make
-  `depot-net` mandatory for EVERY run (search is core, unlike optional tracing). Left in `ai-engineer-
-  research/docker` for now; a discrete server-verified follow-up. (depot's `stage-2` profile is Langfuse-
-  only until then.)
+- **Networking:** after Phase 4 (below), the app joins `depot-net` in the BASE compose — search now lives
+  in depot too, so the network is required for every run. `./depot up stage-2` must be up first. Storage =
+  local disk (named volumes on Docker's local driver; ClickHouse/MinIO misbehave on NFS).
+- **SearXNG migrated into `service-depot` (Phase 4, done).** Search now lives in depot beside Langfuse
+  (profile `["searxng","stage-2"]`); the app reaches `http://searxng:8080` over `depot-net` exactly as
+  before. Consequence (accepted): `depot-net` is now mandatory for EVERY run (search is core), so the app's
+  BASE compose joins it and `./depot up stage-2` is a prerequisite — the app repo is no longer standalone-
+  runnable, which is the honest shape of a shared-services architecture. `stage-2` profile = searxng + langfuse.
 - **Status:** Langfuse stack (`service-depot`) + the `depot` launcher + Stage-2 `tracing.py` wiring built &
   locally validated (logic/dry-run); end-to-end trace verification is a server step. Stack adapted from
   Langfuse's official v3 self-host compose (profiles + single-service `depot-net` exposure + telemetry-off).
@@ -432,11 +423,11 @@ cross-encoder rerank — now first-class **LangChain tools**, not GPTR injection
 backend: read-only `wiki/` + writable `artifacts/<id>/`; `index.md` entry point; ~80–370 small files →
 grep suffices). BM25 vault + MCP server kept as the semantic upgrade path + Stage-3 sharing mechanism.
 
-## Egress (server)
-Hard allowlist (search engines work; most sites TLS-reset). Appeal-to-unblock for code gathering:
-`github.com`, `raw.githubusercontent.com`, `api.github.com`, `codeload.github.com`; plus `pypi.org`,
-`files.pythonhosted.org`, `huggingface.co`, `arxiv.org`, key docs domains. Tools MUST degrade
-gracefully (log + skip) on a blocked domain — never crash a run on a TLS reset.
+## Outbound network (deploy environment)
+Limited outbound access — only a subset of the public web is reachable; unreachable hosts fail with a
+connection reset. The reliably-reachable substrate for code gathering is the code forges, model hub, and
+package/container registries (GitHub, Hugging Face, PyPI, container registries) plus search. Tools MUST
+degrade gracefully (log + skip) on an unreachable host — never crash a run on a connection reset.
 
 ## Verify-on-server seams (can't be checked from the local 3.10 box)
 - M0 probe end-to-end against the live vLLM endpoint (and that the model is served with tool-calling

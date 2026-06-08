@@ -25,13 +25,14 @@ The CLI is just a thin wrapper over that.
 
 ## 2. The one rule that shapes everything
 
-This project lives behind a **hard egress allowlist** — most of the web is unreachable (TLS-reset). Only
-~28 of 122 probed domains work: **GitHub, Hugging Face, PyPI, container registries, NVIDIA, a few official
-docs (python/k8s/docker), and Google/Bing search**. Blocked: arxiv, StackOverflow, Wikipedia, blogs, npm,
-and all CDNs. There is **no proxy escape hatch**.
+This project runs in a **restricted-network environment** with limited outbound access — only a subset of
+the public web is reachable, and unreachable hosts fail with a connection reset. The reliably-reachable
+substrate is **GitHub, Hugging Face, PyPI, container registries, a few official docs (python/k8s/docker),
+and Google/Bing search**; many papers/Q&A/blog sources aren't reachable, and there is **no proxy escape
+hatch**.
 
 This is why the researcher leans on **structured APIs** (GitHub/HF/PyPI REST) rather than scraping, and
-why it tags every source as reachable `[✓]` / blocked `[✗]`. You don't configure this — just know that
+why it tags every source as reachable `[✓]` / unreachable `[✗]`. You don't configure this — just know that
 "it didn't fetch that arxiv link" is by design, not a bug.
 
 ## 3. Where you run it
@@ -58,6 +59,11 @@ docker-compose build app
 > **NFS gotcha:** before the first real run, pre-create the output dirs or Docker's root-squash will fail
 > to mkdir them:
 > `mkdir -p ../artifacts ../vault_data && chmod 777 ../artifacts ../vault_data`
+
+> **Shared services (search + tracing).** SearXNG (always needed) and Langfuse (optional, `AER_TRACING`)
+> live in the separate `service-depot` repo and are reached over the `depot-net` network. Bring them up
+> first — in `service-depot`: `./depot setup` then `./depot up stage-2`. The app's compose joins
+> `depot-net`, so a run errors with `network depot-net … not found` if depot isn't up.
 
 ## 5. Configuring models (`.env`)
 
@@ -199,8 +205,8 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 | var | effect |
 |-----|--------|
 | `AER_MULTI_AGENT=1` | turn on the multi-agent path |
-| `AER_FETCH_BACKEND=http\|browser\|auto` | scraping backend (default `http` = httpx+trafilatura; browser is opt-in and its CDN is blocked anyway) |
-| `AER_REACHABLE_DOMAINS` | override the egress allowlist (e.g. when a domain gets appealed/unblocked — no code change needed) |
+| `AER_FETCH_BACKEND=http\|browser\|auto` | scraping backend (default `http` = httpx+trafilatura; browser is opt-in and its CDN isn't reachable anyway) |
+| `AER_REACHABLE_DOMAINS` | override the preferred-source set (e.g. when a new source becomes reachable — no code change needed) |
 | `AER_LLM_TIMEOUT_S` (300) / `AER_LLM_MAX_RETRIES` (3) | robustness for long runs |
 | `AER_CHECKPOINT` (1) | crash-resume checkpointing; set `0` to disable |
 | `AER_RESUME_MAX_RETRIES` (2) / `AER_RESUME_BACKOFF_S` (45) | auto-resume attempts + backoff before the 2nd |
@@ -211,14 +217,14 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 
 ## 10. Quick troubleshooting
 
-- **"Connection reset" on a fetch** → that domain is egress-blocked. Expected; the agent fast-skips
-  known-blocked hosts.
+- **"Connection reset" on a fetch** → that domain isn't reachable from this environment. Expected; the
+  agent fast-skips known-unreachable hosts.
 - **Tools never get called / agent gives up early** → re-run M0. If it fails, the lead model isn't
   tool-calling reliably; route it to a frontier model.
 - **`permission denied` creating a mount path** → you skipped the NFS pre-create step
   (`mkdir -p … && chmod 777 …`).
 - **Browser/Playwright errors** → ignore; the default `http` backend doesn't use a browser, and the
-  Playwright CDN is blocked.
+  Playwright CDN isn't reachable.
 - **A run "crashed" but you still got files** → that's salvage-on-error; check `coverage.json`
   `truncated`. To finish it, resume it: `--resume` (pick from the list) or `--resume <run_id>`.
 - **`--resume` says "No unfinished runs"** → every checkpoint was either cleaned on success or swept;
@@ -229,7 +235,7 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 ## 11. Where to go deeper
 
 - [`../README.md`](../README.md) — the canonical quickstart.
-- [`../DEV_NOTES.md`](../DEV_NOTES.md) — every gotcha and learning (egress, vLLM quirks, deepagents API
-  traps, grounding discipline). Read this before debugging anything weird.
+- [`../DEV_NOTES.md`](../DEV_NOTES.md) — every gotcha and learning (network reachability, vLLM quirks,
+  deepagents API traps, grounding discipline). Read this before debugging anything weird.
 - [`../DECISIONS.md`](../DECISIONS.md) — the *why* behind the architecture + full M0→M3 milestone history.
 - [`STAGE3_CONTRACT.md`](STAGE3_CONTRACT.md) — how the artifact feeds the future PoC Builder.

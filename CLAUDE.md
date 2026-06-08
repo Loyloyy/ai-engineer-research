@@ -39,7 +39,10 @@ full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` for th
 - `runlog.py` — per-run fetch ledger → miss-log + coverage manifest (+ elapsed/truncated); persisted to
   `ledger.json` for resume.
 - `checkpoint.py` — crash-resume via LangGraph SqliteSaver (shared `artifacts/checkpoints.sqlite`;
-  delete-on-success; truncated-run age sweep). `core.resume_research` + CLI `--resume`.
+  delete-on-success; startup sweep of stale-truncated + orphaned threads). `core.resume_research`.
+- `manage.py` — list/clean/resume-all unfinished (checkpointed) runs; backs CLI `--list` / `--clean`
+  `[--with-folders]` / `--resume-all` / `--resume <id>` / bare `--resume` (interactive numbered picker).
+  Resume honors the run's original `multi_agent` mode (persisted in `run_meta.json`).
 - `tools/` — `search.py` (SearXNG), `scrape.py` (browserless `fetch_url`), `github.py`/`hf.py`/`pypi.py`
   (M2 structured APIs). `WEB_TOOLS` (lean M1) vs `STRUCTURED_TOOLS`.
 - `artifact/` — `schema.py` (DeepResearchArtifact), `store.py`, `validate.py`, `extract.py`.

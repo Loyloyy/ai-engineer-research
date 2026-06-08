@@ -78,29 +78,76 @@ def delete_run(saver, run_id: str) -> None:
         logger.warning("could not delete checkpoint thread %s: %s", run_id, e)
 
 
-def sweep_truncated(artifacts_root: Path, saver, max_age_days: int) -> int:
-    """Delete checkpoints of `truncated` runs older than the retention window. Returns count removed.
+def list_threads(db_path: Path) -> list[str]:
+    """Distinct thread_ids with live checkpoints = the unfinished/resumable runs. [] if no DB."""
+    db_path = Path(db_path)
+    if not db_path.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute("SELECT DISTINCT thread_id FROM checkpoints").fetchall()
+        finally:
+            conn.close()
+        return sorted({r[0] for r in rows if r[0]})
+    except sqlite3.Error as e:
+        logger.warning("could not list checkpoint threads in %s: %s", db_path, e)
+        return []
 
-    The run_id encodes its date, so we don't query the DB for timestamps — we scan the run folders'
-    `coverage.json` (which carries the `truncated` flag) and use each folder's mtime as the age.
+
+def delete_threads(db_path: Path, run_ids) -> int:
+    """Delete the given runs' checkpoints from the shared DB. Returns count attempted."""
+    run_ids = list(run_ids)
+    if not run_ids:
+        return 0
+    saver = build_checkpointer(db_path)
+    if saver is None:
+        return 0
+    try:
+        for rid in run_ids:
+            delete_run(saver, rid)
+    finally:
+        try:
+            saver.conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+    return len(run_ids)
+
+
+def sweep_truncated(artifacts_root: Path, saver, max_age_days: int) -> int:
+    """Reap stale checkpoints at startup. Returns count removed.
+
+    Two cases:
+      1. Age-based — `truncated` runs whose folder is older than the retention window. The run_id encodes
+         its date, so we read each folder's `coverage.json` (the `truncated` flag) + mtime, no DB query.
+      2. Orphans — threads in the DB whose run folder no longer exists (e.g. the user deleted it by hand);
+         these can never be age-swept by case 1, so reap them unconditionally.
     """
     root = Path(artifacts_root)
-    if not root.exists() or max_age_days <= 0:
-        return 0
-    cutoff = time.time() - max_age_days * 86400
     removed = 0
-    for cov in root.glob("*/coverage.json"):
-        run_dir = cov.parent
-        try:
-            if run_dir.stat().st_mtime > cutoff:
+    if root.exists() and max_age_days > 0:
+        cutoff = time.time() - max_age_days * 86400
+        for cov in root.glob("*/coverage.json"):
+            run_dir = cov.parent
+            try:
+                if run_dir.stat().st_mtime > cutoff:
+                    continue
+                data = json.loads(cov.read_text())
+            except (OSError, ValueError):
                 continue
-            data = json.loads(cov.read_text())
-        except (OSError, ValueError):
-            continue
-        if not data.get("truncated"):
-            continue
-        delete_run(saver, run_dir.name)
-        removed += 1
+            if not data.get("truncated"):
+                continue
+            delete_run(saver, run_dir.name)
+            removed += 1
+    # Orphans: thread present in the DB but its run folder is gone.
+    try:
+        threads = {r[0] for r in saver.conn.execute("SELECT DISTINCT thread_id FROM checkpoints")}
+    except Exception:  # noqa: BLE001 — orphan reap is best-effort
+        threads = set()
+    for tid in threads:
+        if tid and not (root / tid).exists():
+            delete_run(saver, tid)
+            removed += 1
     if removed:
-        logger.info("checkpoint sweep removed %d stale truncated-run checkpoint(s)", removed)
+        logger.info("checkpoint sweep removed %d stale/orphaned checkpoint(s)", removed)
     return removed

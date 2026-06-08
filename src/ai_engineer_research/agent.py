@@ -198,9 +198,12 @@ def run_gather(
     ledger = load_ledger(ledger_path) if resume else configure_ledger()
     if not resume:
         # Persist the inputs needed to resume BEFORE any LLM call, so even a hard kill (Ctrl-C / docker
-        # stop — which skips the salvage path) leaves enough on disk for `--resume` to recover.
+        # stop — which skips the salvage path) leaves enough on disk for `--resume` to recover. `multi_agent`
+        # MUST be remembered: resuming with the wrong topology would mismatch the checkpointed graph.
         try:
-            (run_dir / "run_meta.json").write_text(json.dumps({"topic": topic, "brief": brief}, indent=2))
+            (run_dir / "run_meta.json").write_text(
+                json.dumps({"topic": topic, "brief": brief, "multi_agent": use_multi}, indent=2)
+            )
         except OSError as e:
             logger.warning("could not write run_meta.json: %s", e)
     if interactive:

@@ -75,11 +75,24 @@ def resume_research(
     """
     cfg = config or load_config()
     topic, brief, version, lineage_parent, seed_pages = _recover_run_inputs(run_id)
-    report_md, run_dir, _ = run_gather(topic, brief, config=cfg, run_id=run_id, resume=True)
+    # Honor the ORIGINAL topology — resuming a multi-agent run with the lean agent (or vice-versa) would
+    # mismatch the checkpointed graph. None (old run_meta without the field) → fall back to cfg.
+    multi_agent = _meta_field(run_id, "multi_agent")
+    report_md, run_dir, _ = run_gather(
+        topic, brief, config=cfg, run_id=run_id, resume=True, multi_agent=multi_agent
+    )
     return _finalize(
         cfg, topic, brief, report_md, run_dir,
         artifact_id=run_id, version=version, lineage_parent=lineage_parent, seed_pages=seed_pages,
     )
+
+
+def _meta_field(run_id: str, key: str):
+    """Read one field from a run's run_meta.json, or None if absent/unreadable."""
+    try:
+        return json.loads((ARTIFACTS_ROOT / run_id / "run_meta.json").read_text()).get(key)
+    except (OSError, ValueError):
+        return None
 
 
 def _recover_run_inputs(run_id: str) -> tuple[str, str, int, str | None, list[str]]:

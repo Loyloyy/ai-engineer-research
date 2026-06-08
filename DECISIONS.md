@@ -359,6 +359,22 @@ native, not hand-rolled.
   must resume without restarting from scratch (kill mid-subagent → `--resume` → confirm it continues).
   Also eyeball checkpoint-DB growth vs deepagents #2876 (SummarizationMiddleware not trimming messages →
   unbounded checkpoint bloat) — our delete-on-success keeps it bounded for clean runs.
+- **Run management (`manage.py` + CLI).** Since a clean finish deletes its thread, "threads still in the
+  shared DB" == "resumable runs" — the source of truth for `--list` / `--clean [--with-folders]` /
+  `--resume-all`. `--clean` confirms before deleting (or `--yes`; refuses in a non-tty without it).
+- **Orphan reaping.** The age-sweep keys off each run folder's `coverage.json`, so deleting a folder by
+  hand would otherwise strand its checkpoint forever. The startup sweep now also drops threads whose run
+  folder is gone → "just delete the folder" becomes eventually-sufficient (next run's sweep clears it).
+- **Resume honors the original topology.** `run_meta.json` records `multi_agent`; resume passes it back so
+  a multi-agent run never resumes under the lean agent (or vice-versa) — that would mismatch the
+  checkpointed graph (different tools/subagents/system prompt).
+- **Interactive picker, NOT a Claude skill (decided with the user).** A `/resume` skill runs where Claude
+  Code runs (the user's LOCAL box), but the runs + checkpoint DB live on the SERVER and the user reaches
+  it only via PuTTY — so a skill would have to SSH in (extra setup) AND keep the server host in a
+  gitignored config (rule #1 bars it from any committed skill). Instead, bare `--resume` (no id) prints a
+  numbered list and prompts for a selection — the same "see all + pick" UX, running in the PuTTY session
+  where the work already happens, no SSH/host-config. A skill stays an option if Claude is ever run
+  server-side.
 - **Observability (LangSmith/Langfuse) deferred** — the cloud tracers are egress-blocked on the H200;
   if pursued later, self-host (a callback → `artifacts/<id>/trace.jsonl`), not a cloud endpoint.
 

@@ -124,9 +124,9 @@ Per-call LLM tracing via **self-hosted Langfuse** (the egress allowlist blocks L
 shared-services repo, and this app is a pure consumer.
 
 ```bash
-# in service-depot: bring up Langfuse, then print this app's connection snippet
-depot up --app stage-2
-depot connect stage-2          # → LANGFUSE_HOST + project keys
+# in service-depot (no pip/venv — a bash script over docker compose):
+./depot up stage-2
+./depot connect stage-2        # → LANGFUSE_HOST + project keys
 
 # in this repo's .env: paste the snippet + enable
 AER_TRACING=1

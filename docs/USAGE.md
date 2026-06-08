@@ -153,9 +153,9 @@ tracing. The backend lives in the separate **`service-depot`** repo (the egress 
 cloud); this app just sends traces to it.
 
 ```bash
-# 1. in service-depot: bring up Langfuse and get this app's keys
-depot up --app stage-2
-depot connect stage-2                 # prints LANGFUSE_HOST + project keys
+# 1. in service-depot (a bash script over docker compose — no pip/venv): bring up Langfuse + get keys
+./depot up stage-2
+./depot connect stage-2               # prints LANGFUSE_HOST + project keys
 
 # 2. in this repo: paste those into .env, then
 AER_TRACING=1

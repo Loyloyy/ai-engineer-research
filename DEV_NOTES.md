@@ -164,8 +164,9 @@ Pinned `deepagents==0.6.7`. Verified against the docs/reference rather than gues
 - **Langfuse v3 self-host needs `docker compose` v2** (the app stack historically used v1). `depot setup`
   checks this. **Local-disk volumes only** — ClickHouse/MinIO misbehave on NFS (named volumes use Docker's
   local driver by default; relocate the data-root if it's on NFS).
-- **`depot` launcher = thin wrapper over compose profiles**, echoes every command, raw `docker compose
-  --profile …` always works. Profiles are the source of truth; `apps.yaml` is just friendly names.
+- **`depot` = a BASH script wrapping compose profiles** (no pip/venv/Python — user rule is Docker-only on
+  the host; just bash + docker compose + openssl). Echoes every command; raw `docker compose --profile …`
+  always works. Profiles are the source of truth; the script's app map is just friendly names.
 
 ## Grounding discipline (what makes it a *researcher*, not a chatbot)
 

@@ -396,11 +396,13 @@ traces serve; (b) Stage 3 commits to Langfuse. So tracing is now worth wiring.
   network `depot-net`); the repo is generic (not `ai-engineer-*`) because the services suit any app. Name
   chosen over `substrate`/`toolshed`/`shared-services`.
 - **The `depot` launcher wraps `docker compose`, never hides it.** Compose **profiles** are the source of
-  truth (`--profile stage-2` = that consumer's services); the launcher (`depot up/down/status/logs/setup/
-  connect`, interactive menu or flags) is convenience that **echoes every command it runs**, and raw
-  `docker compose --profile …` stays first-class for power use + debugging. `depot setup` = one-command
-  onboarding (network, generated secrets → gitignored `.env`, data dir, compose-v2 check); `depot connect
-  <app>` prints the `LANGFUSE_*` snippet to paste into a consumer.
+  truth (`--profile stage-2` = that consumer's services); `./depot` (`up/down/status/logs/setup/connect`,
+  positional args + an interactive menu) is convenience that **echoes every command it runs**, and raw
+  `docker compose --profile …` stays first-class for power use + debugging. `./depot setup` = one-command
+  onboarding (network, generated secrets → gitignored `.env`, data dir, compose-v2 check); `./depot connect
+  <app>` prints the `LANGFUSE_*` snippet. **`depot` is a BASH script — no pip/venv/Python** (user rule:
+  Docker-only host); just bash + docker compose + openssl. (Originally a Python package; reworked when the
+  user flagged the `pip install`.)
 - **App side is a tolerated-absent seam (`tracing.py`), mirroring the checkpointer.** Env-gated
   (`AER_TRACING`, OFF by default), lazy-imported (`langfuse` is an optional `obs` extra), None when
   absent/disabled → zero behaviour change. One `CallbackHandler` at the top-level `agent.invoke` traces the
@@ -417,7 +419,8 @@ traces serve; (b) Stage 3 commits to Langfuse. So tracing is now worth wiring.
   volumes on Docker's local driver; ClickHouse/MinIO misbehave on NFS).
 - **SearXNG migration into `service-depot` = DEFERRED.** Moving search out of the app repo would make
   `depot-net` mandatory for EVERY run (search is core, unlike optional tracing). Left in `ai-engineer-
-  research/docker` for now; a discrete server-verified follow-up. (`service-depot/apps.yaml` notes it.)
+  research/docker` for now; a discrete server-verified follow-up. (depot's `stage-2` profile is Langfuse-
+  only until then.)
 - **Status:** Langfuse stack (`service-depot`) + the `depot` launcher + Stage-2 `tracing.py` wiring built &
   locally validated (logic/dry-run); end-to-end trace verification is a server step. Stack adapted from
   Langfuse's official v3 self-host compose (profiles + single-service `depot-net` exposure + telemetry-off).

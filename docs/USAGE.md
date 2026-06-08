@@ -165,13 +165,18 @@ in-network); this app just sends traces to it.
 
 # 2. in this repo: paste those into .env, then
 AER_TRACING=1
-#    and uncomment the depot-net block in docker/docker-compose.override.yml so the app can reach it
+#    (the app already joins depot-net via the base compose — that's also how it reaches searxng)
 ```
 
-A single trace per run (grouped by `session = run_id`) shows the lead loop, every subagent fan-out, and
-every tool/LLM call nested, each with latency + tokens. A failed call shows as an **errored span** —
-that's how you localize a failure (vs. `coverage.json`, which only flags that the run truncated). With
-`AER_TRACING=0` (default) there's zero behavior change and no dependency on the stack.
+**Reading the traces.** Each run shows up as **one session** (`sessionId = run_id`) containing **two
+traces**: the **agent loop** (tagged `lean`/`multi-agent` — the substantial one: scope → search → fetch →
+reflect → report, with every subagent fan-out and tool/LLM call nested) and the **extraction** pass
+(tagged `extract` — the single LLM call that builds the structured artifact). They're separate because
+they're two `.invoke()` entry points; the shared session links them. In the UI, start from **Sessions** →
+your `dra-…` session → open the `lean`/`multi-agent` trace. Each span shows input/output, latency and
+tokens; a failed call is an **errored span** (how you localize a failure — vs. `coverage.json`, which only
+flags that the run truncated). With `AER_TRACING=0` (default) there's zero behavior change and no
+dependency on the stack.
 
 ## 8. Reading the output
 

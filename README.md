@@ -135,7 +135,7 @@ shared-services repo, and this app is a pure consumer.
 
 # in this repo's .env: paste the snippet + enable
 AER_TRACING=1
-# and join the shared network: uncomment the depot-net block in docker-compose.override.yml
+# (the app already joins depot-net via the base compose — that's also how it reaches searxng)
 ```
 
 One `CallbackHandler` traces the whole run tree — lead + every subagent + tool + LLM call, with token

@@ -119,7 +119,7 @@ docker-compose run --rm app python -m ai_engineer_research.cli --clean [--with-f
 
 ## Observability (optional)
 
-Per-call LLM tracing via **self-hosted Langfuse** (the egress allowlist blocks Langfuse cloud). It's
+Per-call LLM tracing via **self-hosted Langfuse** (keeps trace data in-network; no external SaaS). It's
 **off by default** and fully optional — the Langfuse stack lives in the separate **`service-depot`**
 shared-services repo, and this app is a pure consumer.
 

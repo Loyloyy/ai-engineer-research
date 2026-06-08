@@ -375,8 +375,8 @@ native, not hand-rolled.
   numbered list and prompts for a selection — the same "see all + pick" UX, running in the PuTTY session
   where the work already happens, no SSH/host-config. A skill stays an option if Claude is ever run
   server-side.
-- **Observability (LangSmith/Langfuse) deferred** — the cloud tracers are egress-blocked on the H200;
-  if pursued later, self-host (a callback → `artifacts/<id>/trace.jsonl`), not a cloud endpoint.
+- **Observability (LangSmith/Langfuse) deferred** — cloud tracers would send data off-box; if pursued
+  later, self-host (a callback → `artifacts/<id>/trace.jsonl`), not a cloud endpoint.
 
 ## Observability — self-hosted Langfuse via the `service-depot` shared-infra repo (2026-06-09)
 
@@ -384,8 +384,8 @@ Earlier call (deferred observability as "not worth it" for a headless batch tool
 facts from the user: (a) a Gradio GUI + prompt iteration is now on the roadmap — the workload per-call
 traces serve; (b) Stage 3 commits to Langfuse. So tracing is now worth wiring.
 
-- **Self-hosting clears the egress blocker.** Langfuse *cloud* is TLS-reset by the allowlist; a self-hosted
-  instance runs in-network (reached by name like `searxng`), so traces never leave.
+- **Self-hosting keeps trace data in-network.** A self-hosted instance runs in-network (reached by name
+  like `searxng`), so traces never leave — no external SaaS dependency.
 - **One instance, project-per-consumer.** Not one Langfuse per stage — ONE instance, with a Langfuse
   *project* per app (`stage-2-research`, `stage-3-poc`). Sharing is pure runtime config: each app points at
   the instance with its own project key. No cross-repo code, no secrets in tracked files.

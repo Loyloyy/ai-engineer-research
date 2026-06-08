@@ -8,8 +8,8 @@ automatically as ERRORED spans, pinpointing the exact failing node.
 
 Mirrors the `checkpoint.py` discipline: env-gated (`AER_TRACING`, OFF by default), lazy-imported, and
 tolerated-absent — if the dep is missing or disabled, every function is a safe no-op and nothing crashes.
-Self-hosted only (the egress allowlist blocks Langfuse cloud): creds point at an in-network instance via
-`LANGFUSE_HOST`/`_PUBLIC_KEY`/`_SECRET_KEY`. NO secrets/model/host literals live here — env-driven only.
+Self-hosted only (keeps trace data in-network; no external SaaS dependency): creds point at an in-network
+instance via `LANGFUSE_HOST`/`_PUBLIC_KEY`/`_SECRET_KEY`. NO secrets/model/host literals here — env-driven.
 """
 from __future__ import annotations
 

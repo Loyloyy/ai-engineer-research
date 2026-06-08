@@ -149,8 +149,8 @@ Notes:
 
 Off by default. When you want to *see* what a run did call-by-call (which subagent/LLM call was slow,
 token counts, the exact prompt/output, and **errored spans** for failures), enable self-hosted Langfuse
-tracing. The backend lives in the separate **`service-depot`** repo (the egress allowlist blocks Langfuse
-cloud); this app just sends traces to it.
+tracing. The backend lives in the separate **`service-depot`** repo (self-hosted — trace data stays
+in-network); this app just sends traces to it.
 
 ```bash
 # 1. in service-depot (a bash script over docker compose — no pip/venv): bring up Langfuse + get keys

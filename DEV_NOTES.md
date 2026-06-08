@@ -143,9 +143,9 @@ Pinned `deepagents==0.6.7`. Verified against the docs/reference rather than gues
 
 ## Observability (self-hosted Langfuse — `tracing.py` + the `service-depot` repo)
 
-- **Self-host is non-negotiable here** — the egress allowlist TLS-resets Langfuse cloud. Backend runs
-  in-network (`service-depot` repo); the app reaches `langfuse-web:3000` by name over a shared docker
-  network `depot-net`. Same shape as searxng.
+- **Self-host (keeps trace data in-network)** — no external SaaS dependency. Backend runs in-network
+  (`service-depot` repo); the app reaches `langfuse-web:3000` by name over a shared docker network
+  `depot-net`. Same shape as searxng.
 - **One handler traces everything.** LangChain callbacks propagate down the LangGraph tree, so a single
   `CallbackHandler` on the top-level `agent.invoke` captures lead + every subagent + tool + LLM call. The
   ONE call outside the graph (`extract_artifact`) is passed the handler explicitly so it joins the same

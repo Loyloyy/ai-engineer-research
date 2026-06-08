@@ -83,6 +83,7 @@ Each run writes a timestamped folder `artifacts/<id>/`:
 
 ```
 report.md · comparison.md · code/** · scope.md · reflection.md · notes/** · coverage.json · vNN.json
+run_meta.json · ledger.json     (resume bookkeeping)
 ```
 
 `vNN.json` is the structured **`DeepResearchArtifact`** (the Stage 2→3 contract); `coverage.json` records
@@ -90,11 +91,39 @@ grounding telemetry (fetched vs blocked) + wall-clock. Programmatic entry: `run_
 `ai_engineer_research.core`. How it all fits together: see **`DEV_NOTES.md`** (learnings) and
 **`DECISIONS.md`** (architecture log).
 
+### Resume & manage long runs
+
+A multi-agent run is ~10 min / ~50+ LLM calls against one endpoint, so a single transient timeout used to
+throw the whole run away. Runs are now **checkpointed** (LangGraph `SqliteSaver` → shared
+`artifacts/checkpoints.sqlite`): on a transient failure the run **auto-resumes** (1 immediate retry, then
+1 after a backoff), and anything left unfinished can be **resumed manually**. A clean finish deletes its
+checkpoint; a startup sweep clears stale/orphaned ones. (Disable with `AER_CHECKPOINT=0`.)
+
+```bash
+# Pick an unfinished run from a numbered list and resume it (interactive):
+docker-compose run --rm app python -m ai_engineer_research.cli --resume
+
+# Resume a specific run by id (mode — lean/multi-agent — is remembered automatically):
+docker-compose run --rm app python -m ai_engineer_research.cli --resume <run_id>
+
+# List / resume-all / delete unfinished runs:
+docker-compose run --rm app python -m ai_engineer_research.cli --list
+docker-compose run --rm app python -m ai_engineer_research.cli --resume-all
+docker-compose run --rm app python -m ai_engineer_research.cli --clean [--with-folders] [--yes]
+```
+
+> The interactive picker needs a TTY — `docker-compose run` provides one by default, so **don't pass
+> `-T`**. `--clean` lists what it will delete and confirms first (or `--yes`; it refuses in a non-tty
+> without it). Tunable knobs (all in `.env`): `AER_CHECKPOINT` · `AER_RESUME_MAX_RETRIES` ·
+> `AER_RESUME_BACKOFF_S` · `AER_CHECKPOINT_RETENTION_DAYS`.
+
 ## Status
 
 - **M0** ✅ on-prem tool-calling validated · **M1** ✅ lean agentic loop (scope→gather→reflect→cited
   report + artifact) · **M2** ✅ multi-agent (code-scout/landscape/maturity + structured GitHub/HF/PyPI
   tools + `code/**` gathering); Context7 MCP pending egress appeal · **M3** ✅ Stage-3 contract documented.
+- **Crash-resume** ✅ checkpointed runs (LangGraph SqliteSaver) with auto-retry + manual `--resume` and
+  list/clean/resume-all management commands (validated end-to-end on the server, incl. multi-agent).
 - Multi-agent mode is opt-in via `AER_MULTI_AGENT=1` (lean M1 is the default).
 - **Stage-2 → Stage-3 handoff contract:** [`docs/STAGE3_CONTRACT.md`](docs/STAGE3_CONTRACT.md).
 

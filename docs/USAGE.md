@@ -111,6 +111,40 @@ docker-compose run --rm app python -m ai_engineer_research.cli "<topic>" --seed-
   batch-oriented, so don't expect interactivity. It's robust (300s per-call timeout + salvage-on-error),
   but it's the heavy path.
 
+### Resuming a crashed run + managing unfinished runs
+
+Long runs are **checkpointed** to a shared `artifacts/checkpoints.sqlite` (LangGraph `SqliteSaver`). If a
+run hits a transient failure (e.g. an endpoint timeout) it **auto-resumes** — one immediate retry, then
+one after a short backoff — instead of throwing away the work. Whatever is still unfinished after that you
+can resume by hand. A clean finish deletes its own checkpoint; a startup sweep clears stale + orphaned
+ones. (Turn the whole thing off with `AER_CHECKPOINT=0`.)
+
+```bash
+# See all unfinished runs and pick one to resume (interactive numbered menu):
+docker-compose run --rm app python -m ai_engineer_research.cli --resume
+
+# Resume a specific run (its lean/multi-agent mode is remembered — you don't re-pass AER_MULTI_AGENT):
+docker-compose run --rm app python -m ai_engineer_research.cli --resume <run_id>
+
+# List them without resuming:
+docker-compose run --rm app python -m ai_engineer_research.cli --list
+
+# Resume every unfinished run in sequence:
+docker-compose run --rm app python -m ai_engineer_research.cli --resume-all
+
+# Delete unfinished runs' checkpoints (lists them + confirms first; --yes to skip the prompt):
+docker-compose run --rm app python -m ai_engineer_research.cli --clean            # checkpoints only
+docker-compose run --rm app python -m ai_engineer_research.cli --clean --with-folders --yes  # + run dirs
+```
+
+Notes:
+- The interactive picker needs a terminal — `docker-compose run` allocates one by default, so **don't
+  pass `-T`**.
+- "Unfinished" is the source of truth: a run leaves a checkpoint **only** while incomplete (a clean finish
+  deletes it), so `--list` shows exactly what's resumable.
+- Resume is robust to a hard kill (Ctrl-C / `docker stop`): `run_meta.json` is written before the first
+  LLM call, so the run can still be recovered even though a hard kill skips the normal salvage path.
+
 ## 8. Reading the output
 
 Each run writes a timestamped folder `artifacts/<id>/`:
@@ -124,7 +158,11 @@ reflection.md   ← confidence tiers + seed-hypothesis verdicts
 notes/**        ← per-subagent working notes (code-scout/landscape/maturity)
 coverage.json   ← grounding telemetry: fetched vs blocked + wall-clock elapsed_s + truncated flag
 vNN.json        ← the structured DeepResearchArtifact (the Stage 2→3 contract)
+run_meta.json   ← topic/brief/mode, written before the first call → enables resume after a hard kill
+ledger.json     ← fetch-ledger snapshot so coverage/sources survive a cross-process --resume
 ```
+
+(The shared checkpoint DB lives one level up at `artifacts/checkpoints.sqlite`, not inside the run folder.)
 
 **Where to look first:** `report.md` for the answer, then `coverage.json` to judge *how grounded* it is —
 it tells you which source classes were reachable vs blocked. If `truncated: true`, a long run hit an error
@@ -142,6 +180,9 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 | `AER_FETCH_BACKEND=http\|browser\|auto` | scraping backend (default `http` = httpx+trafilatura; browser is opt-in and its CDN is blocked anyway) |
 | `AER_REACHABLE_DOMAINS` | override the egress allowlist (e.g. when a domain gets appealed/unblocked — no code change needed) |
 | `AER_LLM_TIMEOUT_S` (300) / `AER_LLM_MAX_RETRIES` (3) | robustness for long runs |
+| `AER_CHECKPOINT` (1) | crash-resume checkpointing; set `0` to disable |
+| `AER_RESUME_MAX_RETRIES` (2) / `AER_RESUME_BACKOFF_S` (45) | auto-resume attempts + backoff before the 2nd |
+| `AER_CHECKPOINT_RETENTION_DAYS` (7) | startup sweep drops truncated-run checkpoints older than this |
 | `GITHUB_TOKEN` | optional; lifts GitHub rate limit 60→5000/hr + enables code search |
 
 ## 10. Quick troubleshooting
@@ -155,7 +196,11 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 - **Browser/Playwright errors** → ignore; the default `http` backend doesn't use a browser, and the
   Playwright CDN is blocked.
 - **A run "crashed" but you still got files** → that's salvage-on-error; check `coverage.json`
-  `truncated`.
+  `truncated`. To finish it, resume it: `--resume` (pick from the list) or `--resume <run_id>`.
+- **`--resume` says "No unfinished runs"** → every checkpoint was either cleaned on success or swept;
+  nothing is resumable. `--list` shows the same set.
+- **Interactive picker doesn't prompt / exits immediately** → no TTY. Don't pass `-T` to
+  `docker-compose run`, or just use `--resume <run_id>` directly.
 
 ## 11. Where to go deeper
 

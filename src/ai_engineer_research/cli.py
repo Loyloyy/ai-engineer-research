@@ -83,6 +83,10 @@ def main(argv: list[str] | None = None) -> int:
             print("No unfinished runs to clean.")
             return 0
         what = "checkpoints AND run folders" if args.with_folders else "checkpoints"
+        print(f"\n{len(rows)} unfinished run(s) to delete ({what}):")
+        for r in rows:
+            tag = "" if r["folder_exists"] else "  [folder missing]"
+            print(f"  {r['id']}  {r['topic'][:70]!r}{tag}")
         if not args.yes:
             if not sys.stdin.isatty():
                 print(f"Refusing to delete {what} for {len(rows)} run(s) without --yes (non-interactive).")

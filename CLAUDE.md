@@ -23,9 +23,11 @@
   structural decisions.
 
 ## Status
-M0–M3 built & validated end-to-end (single-agent **and** multi-agent) on the on-prem model. Only
-appeal-gated work remains: Context7 MCP once `context7.com` is unblocked. See `DECISIONS.md` for the
-full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` for the Stage 2→3 handoff.
+M0–M3 built & validated end-to-end (single-agent **and** multi-agent) on the on-prem model. **Crash-resume
+built & validated** (checkpointed runs + auto-retry + `--resume`/`--list`/`--clean`/`--resume-all`; see the
+"Run checkpointing + resume" entry in `DECISIONS.md`). Only appeal-gated work remains: Context7 MCP once
+`context7.com` is unblocked. See `DECISIONS.md` for the full log, `DEV_NOTES.md` for gotchas/learnings,
+`docs/STAGE3_CONTRACT.md` for the Stage 2→3 handoff.
 
 ## Layout (`src/ai_engineer_research/`)
 - `core.py` — `run_research(...)`, the stable contract (assemble brief → loop → extract → save).

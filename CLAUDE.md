@@ -25,9 +25,11 @@
 ## Status
 M0–M3 built & validated end-to-end (single-agent **and** multi-agent) on the on-prem model. **Crash-resume
 built & validated** (checkpointed runs + auto-retry + `--resume`/`--list`/`--clean`/`--resume-all`; see the
-"Run checkpointing + resume" entry in `DECISIONS.md`). Only appeal-gated work remains: Context7 MCP once
-`context7.com` is unblocked. See `DECISIONS.md` for the full log, `DEV_NOTES.md` for gotchas/learnings,
-`docs/STAGE3_CONTRACT.md` for the Stage 2→3 handoff.
+"Run checkpointing + resume" entry in `DECISIONS.md`). **Observability built** (optional self-hosted Langfuse
+via `tracing.py`; backend in the sibling `service-depot` repo; locally validated, server trace-check pending).
+Only appeal-gated work remains: Context7 MCP once `context7.com` is unblocked. **Deferred:** migrating SearXNG
+into `service-depot` (search is core → would make `depot-net` mandatory for all runs). See `DECISIONS.md` for
+the full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` for the Stage 2→3 handoff.
 
 ## Layout (`src/ai_engineer_research/`)
 - `core.py` — `run_research(...)`, the stable contract (assemble brief → loop → extract → save).
@@ -42,6 +44,8 @@ built & validated** (checkpointed runs + auto-retry + `--resume`/`--list`/`--cle
   `ledger.json` for resume.
 - `checkpoint.py` — crash-resume via LangGraph SqliteSaver (shared `artifacts/checkpoints.sqlite`;
   delete-on-success; startup sweep of stale-truncated + orphaned threads). `core.resume_research`.
+- `tracing.py` — optional self-hosted Langfuse tracing (env-gated `AER_TRACING`, lazy/tolerated-absent like
+  `checkpoint.py`). One CallbackHandler at `agent.invoke` traces the whole tree; backend = `service-depot`.
 - `manage.py` — list/clean/resume-all unfinished (checkpointed) runs; backs CLI `--list` / `--clean`
   `[--with-folders]` / `--resume-all` / `--resume <id>` / bare `--resume` (interactive numbered picker).
   Resume honors the run's original `multi_agent` mode (persisted in `run_meta.json`).
@@ -57,3 +61,4 @@ built & validated** (checkpointed runs + auto-retry + `--resume`/`--list`/`--cle
 - `AER_MULTI_AGENT` (0/1) · `AER_FETCH_BACKEND` (http/browser/auto) · `AER_REACHABLE_DOMAINS`
 - `AER_LLM_TIMEOUT_S` / `AER_LLM_MAX_RETRIES` · `GITHUB_TOKEN` (optional, lifts GH rate limit)
 - `AER_CHECKPOINT` (0/1) · `AER_RESUME_MAX_RETRIES` · `AER_RESUME_BACKOFF_S` · `AER_CHECKPOINT_RETENTION_DAYS`
+- `AER_TRACING` (0/1) · `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` (self-hosted; via `service-depot`)

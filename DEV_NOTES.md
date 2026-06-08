@@ -141,6 +141,32 @@ Pinned `deepagents==0.6.7`. Verified against the docs/reference rather than gues
   - **Watch checkpoint-DB growth** (deepagents #2876: summarization doesn't trim `state.messages` →
     unbounded checkpoint bloat). Bounded for clean runs by delete-on-success + the truncated-run age sweep.
 
+## Observability (self-hosted Langfuse — `tracing.py` + the `service-depot` repo)
+
+- **Self-host is non-negotiable here** — the egress allowlist TLS-resets Langfuse cloud. Backend runs
+  in-network (`service-depot` repo); the app reaches `langfuse-web:3000` by name over a shared docker
+  network `depot-net`. Same shape as searxng.
+- **One handler traces everything.** LangChain callbacks propagate down the LangGraph tree, so a single
+  `CallbackHandler` on the top-level `agent.invoke` captures lead + every subagent + tool + LLM call. The
+  ONE call outside the graph (`extract_artifact`) is passed the handler explicitly so it joins the same
+  `session = run_id`.
+- **Flush-before-exit is mandatory.** The app runs via ephemeral `docker compose run --rm`; the Langfuse
+  SDK batches, so without `flush_tracer()` (in `run_gather`'s `finally` + after extraction) the spans never
+  ship. Symptom: "tracing on, run finished, no trace in the UI."
+- **Import path is `from langfuse.langchain import CallbackHandler`** (v3; moved from `langfuse.callback`
+  in v2). Trace attributes (session/tags/user) go via the invoke `config["metadata"]` keys
+  `langfuse_session_id` / `langfuse_tags` / `langfuse_user_id`, NOT the handler constructor.
+- **Tolerated-absent + env-gated** (mirrors the checkpointer): `AER_TRACING` off by default; `langfuse` is
+  an optional `obs` extra; `build_tracer()` returns None if disabled/absent → zero behavior change.
+- **Network is opt-in via the override**, not the base compose — a plain run with tracing off must not
+  require `depot-net` to exist. (Joining networks in the override means also listing `default`, else the
+  app loses searxng.)
+- **Langfuse v3 self-host needs `docker compose` v2** (the app stack historically used v1). `depot setup`
+  checks this. **Local-disk volumes only** — ClickHouse/MinIO misbehave on NFS (named volumes use Docker's
+  local driver by default; relocate the data-root if it's on NFS).
+- **`depot` launcher = thin wrapper over compose profiles**, echoes every command, raw `docker compose
+  --profile …` always works. Profiles are the source of truth; `apps.yaml` is just friendly names.
+
 ## Grounding discipline (what makes it a *researcher*, not a chatbot)
 
 - **The failure mode to avoid:** early on, with nearly all fetches egress-blocked, the agent produced a

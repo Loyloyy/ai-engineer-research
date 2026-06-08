@@ -84,6 +84,7 @@ def extract_artifact(
     seed_pages: list[str] | None = None,
     model: str = "smart",  # ROLE name -> build_chat_model(role)
     model_versions: dict | None = None,
+    tracer=None,  # optional Langfuse CallbackHandler → the extraction LLM call joins the run's trace
 ) -> DeepResearchArtifact:
     ext = _Extraction()
     if report_md.strip():
@@ -95,6 +96,13 @@ def extract_artifact(
         except Exception as e:  # noqa: BLE001 — model unavailable → keep the report, skip extraction
             logger.warning("extraction model unavailable (%s); returning content-light artifact", e)
 
+        # The extraction is the one LLM call OUTSIDE the agent graph; tie it to the same run trace.
+        invoke_cfg: dict = {}
+        if tracer is not None:
+            from ..tracing import trace_metadata
+
+            invoke_cfg = {"callbacks": [tracer], "metadata": trace_metadata(artifact_id, ["extract"])}
+
         if structured is not None:
             msgs = [
                 {"role": "system", "content": _SYSTEM},
@@ -102,7 +110,7 @@ def extract_artifact(
             ]
             for attempt in (1, 2):  # one stricter retry before giving up
                 try:
-                    ext = structured.invoke(msgs)
+                    ext = structured.invoke(msgs, config=invoke_cfg)
                     break
                 except Exception as e:  # noqa: BLE001
                     logger.warning("artifact extraction attempt %d failed: %s", attempt, e)

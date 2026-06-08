@@ -47,6 +47,9 @@ class RunConfig:
     resume_max_retries: int = 2   # auto-resume attempts after the initial run: 1 immediate + 1 backed-off
     resume_backoff_s: int = 45    # delay before the 2nd auto-resume (lets a loaded endpoint recover)
     checkpoint_retention_days: int = 7  # sweep checkpoints of truncated runs older than this at startup
+    # Optional Langfuse tracing (self-hosted). Source of truth is env AER_TRACING (read in tracing.py);
+    # mirrored here for discoverability alongside the other knobs.
+    tracing_enabled: bool = False
     artifact: ArtifactConfig = field(default_factory=ArtifactConfig)
 
 
@@ -59,6 +62,7 @@ def load_config(path: str | Path | None = None) -> RunConfig:
     ar = data.get("artifact", {}) or {}
     env_multi = os.environ.get("AER_MULTI_AGENT", "").strip().lower()
     env_ckpt = os.environ.get("AER_CHECKPOINT", "").strip().lower()
+    env_trace = os.environ.get("AER_TRACING", "").strip().lower()
     return RunConfig(
         lead_role=os.environ.get("LEAD_ROLE") or r.get("lead_role", "strategic"),
         multi_agent=(env_multi in ("1", "true", "yes")) if env_multi else bool(r.get("multi_agent", False)),
@@ -72,6 +76,7 @@ def load_config(path: str | Path | None = None) -> RunConfig:
         checkpoint_retention_days=int(
             os.environ.get("AER_CHECKPOINT_RETENTION_DAYS") or r.get("checkpoint_retention_days", 7)
         ),
+        tracing_enabled=(env_trace in ("1", "true", "yes")) if env_trace else bool(r.get("tracing_enabled", False)),
         artifact=ArtifactConfig(
             enabled=bool(ar.get("enabled", True)),
             model=ar.get("model", "smart"),

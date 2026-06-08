@@ -44,12 +44,15 @@ vault = [
 ]
 # M3+ — optional presentation layer (no pipeline logic lives here).
 ui = ["gradio>=4"]
+# Observability — optional Langfuse tracing (self-hosted; see service-depot). Lazy-imported + env-gated
+# (AER_TRACING) in tracing.py, so the core stays import-light when tracing is off.
+obs = ["langfuse>=3"]
 # Server build — everything (incl. the optional browser path).
 all = [
   "httpx", "trafilatura>=1.8", "crawl4ai>=0.4",
   "sentence-transformers", "langchain-classic", "langchain-huggingface",
   "rank-bm25", "langchain-mcp-adapters",
-  "gradio>=4",
+  "gradio>=4", "langfuse>=3",
 ]
 
 [project.scripts]

@@ -25,6 +25,7 @@ from .artifact import save as save_artifact
 from .config import RunConfig, load_config
 from .runlog import current_ledger
 from .seed import seed_brief
+from .tracing import build_tracer, flush_tracer
 
 
 def run_research(
@@ -137,18 +138,24 @@ def _finalize(
     }
 
     if cfg.artifact.enabled:
-        artifact = extract_artifact(
-            topic=topic,
-            brief=full_brief,
-            report_md=report_md,
-            sources=sources,
-            artifact_id=artifact_id,
-            version=version,
-            parent_id=lineage_parent,
-            seed_pages=seed_pages,
-            model=cfg.artifact.model,
-            model_versions=model_versions,
-        )
+        # Trace the extraction LLM call into the same run session (no-op when AER_TRACING is off).
+        tracer = build_tracer()
+        try:
+            artifact = extract_artifact(
+                topic=topic,
+                brief=full_brief,
+                report_md=report_md,
+                sources=sources,
+                artifact_id=artifact_id,
+                version=version,
+                parent_id=lineage_parent,
+                seed_pages=seed_pages,
+                model=cfg.artifact.model,
+                model_versions=model_versions,
+                tracer=tracer,
+            )
+        finally:
+            flush_tracer()
     else:
         artifact = DeepResearchArtifact(
             id=artifact_id,

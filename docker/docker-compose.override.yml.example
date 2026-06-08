@@ -17,3 +17,15 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
+
+    # ---- OPTIONAL: Langfuse tracing (AER_TRACING=1) ----
+    # Join the shared `depot-net` so the app resolves `langfuse-web:3000` (the Langfuse stack lives in
+    # the `service-depot` repo). Listing networks here means you MUST also keep `default` (else the app
+    # loses access to searxng). Bring depot up first: `depot up --app stage-2` (creates depot-net).
+    # networks:
+    #   - default
+    #   - depot-net
+
+# networks:
+#   depot-net:
+#     external: true

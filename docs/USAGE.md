@@ -145,6 +145,28 @@ Notes:
 - Resume is robust to a hard kill (Ctrl-C / `docker stop`): `run_meta.json` is written before the first
   LLM call, so the run can still be recovered even though a hard kill skips the normal salvage path.
 
+### Observability (optional Langfuse tracing)
+
+Off by default. When you want to *see* what a run did call-by-call (which subagent/LLM call was slow,
+token counts, the exact prompt/output, and **errored spans** for failures), enable self-hosted Langfuse
+tracing. The backend lives in the separate **`service-depot`** repo (the egress allowlist blocks Langfuse
+cloud); this app just sends traces to it.
+
+```bash
+# 1. in service-depot: bring up Langfuse and get this app's keys
+depot up --app stage-2
+depot connect stage-2                 # prints LANGFUSE_HOST + project keys
+
+# 2. in this repo: paste those into .env, then
+AER_TRACING=1
+#    and uncomment the depot-net block in docker/docker-compose.override.yml so the app can reach it
+```
+
+A single trace per run (grouped by `session = run_id`) shows the lead loop, every subagent fan-out, and
+every tool/LLM call nested, each with latency + tokens. A failed call shows as an **errored span** —
+that's how you localize a failure (vs. `coverage.json`, which only flags that the run truncated). With
+`AER_TRACING=0` (default) there's zero behavior change and no dependency on the stack.
+
 ## 8. Reading the output
 
 Each run writes a timestamped folder `artifacts/<id>/`:
@@ -183,6 +205,8 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 | `AER_CHECKPOINT` (1) | crash-resume checkpointing; set `0` to disable |
 | `AER_RESUME_MAX_RETRIES` (2) / `AER_RESUME_BACKOFF_S` (45) | auto-resume attempts + backoff before the 2nd |
 | `AER_CHECKPOINT_RETENTION_DAYS` (7) | startup sweep drops truncated-run checkpoints older than this |
+| `AER_TRACING` (0) | self-hosted Langfuse tracing; `1` to enable (needs the `service-depot` stack + `LANGFUSE_*`) |
+| `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse connection (from `depot connect <app>`) |
 | `GITHUB_TOKEN` | optional; lifts GitHub rate limit 60→5000/hr + enables code search |
 
 ## 10. Quick troubleshooting

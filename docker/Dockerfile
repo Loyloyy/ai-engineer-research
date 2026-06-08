@@ -21,7 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install deps first (better layer caching)
 COPY pyproject.toml ./
 COPY src ./src
-RUN pip install --upgrade pip && pip install -e ".[web]"
+# web = default fetch backend; obs = optional Langfuse tracing (lazy-imported, enabled via AER_TRACING).
+RUN pip install --upgrade pip && pip install -e ".[web,obs]"
 
 # Optional browser backend (crawl4ai + Playwright chromium). The chromium download CDN must be on
 # the server egress allowlist or the install step fails (non-fatal: fetch_url then stays on the http

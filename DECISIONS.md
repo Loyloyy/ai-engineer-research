@@ -378,6 +378,50 @@ native, not hand-rolled.
 - **Observability (LangSmith/Langfuse) deferred** — the cloud tracers are egress-blocked on the H200;
   if pursued later, self-host (a callback → `artifacts/<id>/trace.jsonl`), not a cloud endpoint.
 
+## Observability — self-hosted Langfuse via the `service-depot` shared-infra repo (2026-06-09)
+
+Earlier call (deferred observability as "not worth it" for a headless batch tool) **reversed** on two new
+facts from the user: (a) a Gradio GUI + prompt iteration is now on the roadmap — the workload per-call
+traces serve; (b) Stage 3 commits to Langfuse. So tracing is now worth wiring.
+
+- **Self-hosting clears the egress blocker.** Langfuse *cloud* is TLS-reset by the allowlist; a self-hosted
+  instance runs in-network (reached by name like `searxng`), so traces never leave.
+- **One instance, project-per-consumer.** Not one Langfuse per stage — ONE instance, with a Langfuse
+  *project* per app (`stage-2-research`, `stage-3-poc`). Sharing is pure runtime config: each app points at
+  the instance with its own project key. No cross-repo code, no secrets in tracked files.
+- **Shared infra lives in its own GENERIC repo `service-depot`** (sibling at `/mnt/d/aloy/personal/`), not
+  inside a stage repo. Reasons (decided with the user): the repos are public portfolio pieces, so shared
+  *platform* services (Langfuse now; SearXNG, evals later) reading as their own thing demonstrates better
+  judgment than burying a 6-service stack in one stage. Apps are pure consumers (env + a shared docker
+  network `depot-net`); the repo is generic (not `ai-engineer-*`) because the services suit any app. Name
+  chosen over `substrate`/`toolshed`/`shared-services`.
+- **The `depot` launcher wraps `docker compose`, never hides it.** Compose **profiles** are the source of
+  truth (`--profile stage-2` = that consumer's services); the launcher (`depot up/down/status/logs/setup/
+  connect`, interactive menu or flags) is convenience that **echoes every command it runs**, and raw
+  `docker compose --profile …` stays first-class for power use + debugging. `depot setup` = one-command
+  onboarding (network, generated secrets → gitignored `.env`, data dir, compose-v2 check); `depot connect
+  <app>` prints the `LANGFUSE_*` snippet to paste into a consumer.
+- **App side is a tolerated-absent seam (`tracing.py`), mirroring the checkpointer.** Env-gated
+  (`AER_TRACING`, OFF by default), lazy-imported (`langfuse` is an optional `obs` extra), None when
+  absent/disabled → zero behaviour change. One `CallbackHandler` at the top-level `agent.invoke` traces the
+  WHOLE run tree (lead + every subagent + tool); `session=run_id` groups every attempt + the extraction
+  pass; per-attempt tags carry mode + resume/attempt #.
+- **Where errors surface:** per-call failures (timeouts, subagent/tool/extraction exceptions) are auto-
+  captured as ERRORED spans (pinpoint the failing node — the debugging win over coverage.json). The one LLM
+  call outside the graph (`extract_artifact`) is threaded the handler so it joins the same session. Egress
+  blocks stay graceful (normal tool output) — coverage.json remains the blocked-host tally.
+- **Flush-on-exit is mandatory:** the app runs via ephemeral `docker compose run --rm`, so `flush_tracer()`
+  runs in `run_gather`'s `finally` and after extraction, else batched spans are lost.
+- **Networking is opt-in:** the app joins `depot-net` via the gitignored compose *override* (not the base
+  compose), so a plain research run with tracing off needs no depot/network. Storage = local disk (named
+  volumes on Docker's local driver; ClickHouse/MinIO misbehave on NFS).
+- **SearXNG migration into `service-depot` = DEFERRED.** Moving search out of the app repo would make
+  `depot-net` mandatory for EVERY run (search is core, unlike optional tracing). Left in `ai-engineer-
+  research/docker` for now; a discrete server-verified follow-up. (`service-depot/apps.yaml` notes it.)
+- **Status:** Langfuse stack (`service-depot`) + the `depot` launcher + Stage-2 `tracing.py` wiring built &
+  locally validated (logic/dry-run); end-to-end trace verification is a server step. Stack adapted from
+  Langfuse's official v3 self-host compose (profiles + single-service `depot-net` exposure + telemetry-off).
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

@@ -117,6 +117,27 @@ docker-compose run --rm app python -m ai_engineer_research.cli --clean [--with-f
 > without it). Tunable knobs (all in `.env`): `AER_CHECKPOINT` · `AER_RESUME_MAX_RETRIES` ·
 > `AER_RESUME_BACKOFF_S` · `AER_CHECKPOINT_RETENTION_DAYS`.
 
+## Observability (optional)
+
+Per-call LLM tracing via **self-hosted Langfuse** (the egress allowlist blocks Langfuse cloud). It's
+**off by default** and fully optional — the Langfuse stack lives in the separate **`service-depot`**
+shared-services repo, and this app is a pure consumer.
+
+```bash
+# in service-depot: bring up Langfuse, then print this app's connection snippet
+depot up --app stage-2
+depot connect stage-2          # → LANGFUSE_HOST + project keys
+
+# in this repo's .env: paste the snippet + enable
+AER_TRACING=1
+# and join the shared network: uncomment the depot-net block in docker-compose.override.yml
+```
+
+One `CallbackHandler` traces the whole run tree — lead + every subagent + tool + LLM call, with token
+counts, latency, and **errored spans** pinpointing any failing call (the debugging win over
+`coverage.json`). Traces group by `session = run_id`. With `AER_TRACING=0` (default) there's zero
+behavior change and no dependency on the stack. See [`service-depot`](../service-depot) for the backend.
+
 ## Status
 
 - **M0** ✅ on-prem tool-calling validated · **M1** ✅ lean agentic loop (scope→gather→reflect→cited
@@ -124,6 +145,8 @@ docker-compose run --rm app python -m ai_engineer_research.cli --clean [--with-f
   tools + `code/**` gathering); Context7 MCP pending egress appeal · **M3** ✅ Stage-3 contract documented.
 - **Crash-resume** ✅ checkpointed runs (LangGraph SqliteSaver) with auto-retry + manual `--resume` and
   list/clean/resume-all management commands (validated end-to-end on the server, incl. multi-agent).
+- **Observability** ✅ optional self-hosted Langfuse tracing (`AER_TRACING`, off by default); backend in
+  the shared [`service-depot`](../service-depot) repo. Built + locally validated; server trace check pending.
 - Multi-agent mode is opt-in via `AER_MULTI_AGENT=1` (lean M1 is the default).
 - **Stage-2 → Stage-3 handoff contract:** [`docs/STAGE3_CONTRACT.md`](docs/STAGE3_CONTRACT.md).
 

@@ -25,6 +25,7 @@ from .checkpoint import (
 from .config import RunConfig, load_config
 from .models import build_chat_model
 from .runlog import configure_ledger, current_ledger, load_ledger, save_ledger
+from .tracing import build_tracer, flush_tracer, trace_metadata
 from .subagents import RESEARCH_SUBAGENTS
 from .tools import STRUCTURED_TOOLS, WEB_TOOLS
 
@@ -221,10 +222,16 @@ def run_gather(
     invoke_config: dict = {"recursion_limit": _RECURSION_LIMIT}
     if saver is not None:
         invoke_config["configurable"] = {"thread_id": run_id}
+    # Optional Langfuse tracing: one handler at the top traces the whole run tree (lead + subagents +
+    # tools); session=run_id groups every attempt + the extraction pass. None when AER_TRACING is off.
+    mode = "multi-agent" if use_multi else "lean"
+    tracer = build_tracer()
+    if tracer is not None:
+        invoke_config["callbacks"] = [tracer]
     logger.info(
-        "research run %s %s (mode=%s lead_role=%s checkpoint=%s) -> %s",
+        "research run %s %s (mode=%s lead_role=%s checkpoint=%s trace=%s) -> %s",
         run_id, "RESUMING" if resume else "starting",
-        "multi-agent" if use_multi else "lean", cfg.lead_role, saver is not None, run_dir,
+        mode, cfg.lead_role, saver is not None, tracer is not None, run_dir,
     )
 
     # Resilience + crash-resume. A single LLM timeout / tool error mid-run must NOT throw away an
@@ -243,6 +250,11 @@ def run_gather(
                 logger.info("run %s backoff %ds before resume attempt %d/%d",
                             run_id, cfg.resume_backoff_s, attempt + 1, max_attempts)
                 time.sleep(cfg.resume_backoff_s)
+            if tracer is not None:
+                # Per-attempt trace tags (all known upfront → no fragile post-hoc tagging). A failed
+                # attempt's trace still carries ERRORED spans, so failures are findable by session.
+                tags = [mode] + (["resume", f"attempt-{attempt + 1}"] if is_continue else [])
+                invoke_config["metadata"] = trace_metadata(run_id, tags)
             try:
                 payload = None if is_continue else {"messages": [{"role": "user", "content": _task(topic, brief)}]}
                 agent.invoke(payload, config=invoke_config)
@@ -260,6 +272,7 @@ def run_gather(
                     break  # non-transient, no checkpoint, or out of budget → stop and salvage
     finally:
         ledger.elapsed_s = prior_elapsed + (time.monotonic() - t0)
+        flush_tracer()  # ephemeral container exits soon after — push the lead-loop spans now
 
     # Clean finish → drop this run's checkpoint (surgical, shared-DB cleanup). Truncated → keep it.
     if saver is not None:

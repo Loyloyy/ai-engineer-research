@@ -345,6 +345,11 @@ native, not hand-rolled.
   snapshots it to `run_dir/ledger.json` and restores it on resume; `elapsed_s` accumulates across
   segments. (Same-process auto-retries don't need this — the singleton survives — but persisting
   unconditionally keeps both paths consistent.)
+- **Resume survives a HARD kill.** `run_gather` writes `run_meta.json` (topic+brief) BEFORE the first
+  LLM call, and `resume_research` recovers inputs two-tier: partial artifact first (carries lineage/
+  version; present after a caught-exception truncation), else `run_meta.json` (Ctrl-C / `docker stop`
+  skip the salvage path, but the LangGraph checkpoint + run_meta are already on disk). So a deliberate
+  mid-run kill is a valid way to produce a resumable truncated run for testing.
 - **Contract unchanged** (rule #3). `run_research(...)` keeps its exact signature; resume rides a
   separate `resume_research(run_id)` + CLI `--resume RUN_ID` (topic/brief/lineage recovered from the
   partial artifact the truncated run already saved; the completed artifact overwrites that same version —

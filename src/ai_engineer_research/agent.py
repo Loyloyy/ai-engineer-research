@@ -196,6 +196,13 @@ def run_gather(
     ledger_path = run_dir / "ledger.json"
     # Ledger: fresh for a new run; restored from disk on resume so coverage/sources span both segments.
     ledger = load_ledger(ledger_path) if resume else configure_ledger()
+    if not resume:
+        # Persist the inputs needed to resume BEFORE any LLM call, so even a hard kill (Ctrl-C / docker
+        # stop — which skips the salvage path) leaves enough on disk for `--resume` to recover.
+        try:
+            (run_dir / "run_meta.json").write_text(json.dumps({"topic": topic, "brief": brief}, indent=2))
+        except OSError as e:
+            logger.warning("could not write run_meta.json: %s", e)
     if interactive:
         logger.info("interactive scope-gate not wired yet; running headless for run %s", run_id)
 

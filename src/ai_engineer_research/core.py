@@ -10,9 +10,10 @@ M1 lean loop: assemble brief (caller brief + Stage-1 wiki seed) → run the agen
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
-from .agent import run_gather
+from .agent import ARTIFACTS_ROOT, run_gather
 from .artifact import (
     DeepResearchArtifact,
     extract_artifact,
@@ -68,20 +69,37 @@ def resume_research(
 ) -> tuple[str, DeepResearchArtifact]:
     """Resume a prior TRUNCATED run from its checkpoint and finalize the artifact.
 
-    Topic/brief/lineage are recovered from the partial artifact that the truncated run already saved
-    (run_research always persists one, even content-light). The completed artifact OVERWRITES that
-    same version (this finishes the run, it is not a new refinement). Returns the same contract tuple.
+    Topic/brief/lineage are recovered via `_recover_run_inputs` (partial artifact, or run_meta.json on a
+    hard kill). The completed artifact OVERWRITES that same version (this finishes the run, it is not a
+    new refinement). Returns the same contract tuple.
     """
     cfg = config or load_config()
-    parent = load_artifact(run_id)  # latest version = the partial saved when the run truncated
-    report_md, run_dir, _ = run_gather(
-        parent.topic, parent.brief, config=cfg, run_id=run_id, resume=True
-    )
+    topic, brief, version, lineage_parent, seed_pages = _recover_run_inputs(run_id)
+    report_md, run_dir, _ = run_gather(topic, brief, config=cfg, run_id=run_id, resume=True)
     return _finalize(
-        cfg, parent.topic, parent.brief, report_md, run_dir,
-        artifact_id=run_id, version=parent.version, lineage_parent=parent.parent_id,
-        seed_pages=parent.seed_pages,
+        cfg, topic, brief, report_md, run_dir,
+        artifact_id=run_id, version=version, lineage_parent=lineage_parent, seed_pages=seed_pages,
     )
+
+
+def _recover_run_inputs(run_id: str) -> tuple[str, str, int, str | None, list[str]]:
+    """Recover (topic, brief, version, parent_id, seed_pages) for a resume.
+
+    Prefer the partial artifact (carries lineage/version — present after a caught-exception truncation).
+    Fall back to `run_meta.json` (written before the first LLM call → survives a hard kill / docker stop).
+    """
+    try:
+        p = load_artifact(run_id)
+        return p.topic, p.brief, p.version, p.parent_id, p.seed_pages
+    except FileNotFoundError:
+        pass
+    try:
+        meta = json.loads((ARTIFACTS_ROOT / run_id / "run_meta.json").read_text())
+    except (OSError, ValueError) as e:
+        raise FileNotFoundError(
+            f"cannot resume {run_id}: no saved artifact and no readable run_meta.json ({e})"
+        ) from e
+    return meta.get("topic", ""), meta.get("brief", ""), 1, None, []
 
 
 def _finalize(

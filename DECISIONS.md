@@ -316,6 +316,47 @@ and returns a (content-light if needed) artifact rather than crashing. (3) **tim
 timeout 120→**300s** + retries 2→**3**, env-tunable (`AER_LLM_TIMEOUT_S` / `AER_LLM_MAX_RETRIES`).
 Deferred: enforced wall-clock cap + LangGraph checkpointer (resume across runs) if long runs remain flaky.
 
+## Run checkpointing + resume (2026-06-08)
+
+Cashed in the deferred "LangGraph checkpointer" above (the salvage path kept files but lost the in-flight
+graph state → a full re-run on any mid-run timeout). deepagents IS a LangGraph graph, so resume is
+native, not hand-rolled.
+
+- **Mechanism.** `create_deep_agent(..., checkpointer=SqliteSaver)` (verified: 0.6.7 accepts the kwarg).
+  `thread_id = run_id`; every super-step checkpoints; resume = re-invoke the same thread with `None`
+  input to continue from the last checkpoint instead of restarting. New dep
+  `langgraph-checkpoint-sqlite` is **lazy-imported + tolerated-absent** in `checkpoint.py` (None →
+  no-resume, never a crash) so the package stays import-light for the local 3.10 box.
+- **Storage = ONE shared DB + surgical cleanup** (chosen over per-run-DB with the user). `artifacts/
+  checkpoints.sqlite`, one `thread_id` per run. **On a clean finish → `delete_thread(run_id)`** (verified
+  present), so successful runs leave zero bloat while other runs' state is untouched; **truncated runs
+  KEEP their checkpoint** (resumable). Shared-file/NFS contention is a non-issue: one run at a time
+  against the single endpoint. **Retention:** a startup sweep drops checkpoints of `truncated` runs older
+  than `checkpoint_retention_days` (default 7) — the run_id encodes its date, so the sweep reads
+  `artifacts/*/coverage.json` (the `truncated` flag) + folder mtime, no DB timestamp query.
+- **Auto-resume policy (with the user): 2 retries — 1 immediate + 1 after a backoff.** On a TRANSIENT
+  failure (timeout / connection reset — classified by `is_transient_error`), `run_gather` retries within
+  the same process: attempt 0 = the run, retry 1 = immediate resume, retry 2 = resume after
+  `resume_backoff_s` (default 45s — lets a loaded single endpoint recover; an immediate-only retry would
+  re-hit the same wall). Non-transient errors / exhausted budget → leave it `truncated` (checkpoint kept)
+  and surface `--resume <run_id>` for a later **manual** cross-process resume. Salvage stays the floor.
+- **Ledger persistence.** The fetch ledger is an in-memory singleton, so a cross-process `--resume` would
+  start blank and lose the prior segment's fetches (→ degraded coverage/sources). `run_gather` now
+  snapshots it to `run_dir/ledger.json` and restores it on resume; `elapsed_s` accumulates across
+  segments. (Same-process auto-retries don't need this — the singleton survives — but persisting
+  unconditionally keeps both paths consistent.)
+- **Contract unchanged** (rule #3). `run_research(...)` keeps its exact signature; resume rides a
+  separate `resume_research(run_id)` + CLI `--resume RUN_ID` (topic/brief/lineage recovered from the
+  partial artifact the truncated run already saved; the completed artifact overwrites that same version —
+  it finishes the run, it is not a refinement). Knobs (all env-tunable, gitignored `.env`):
+  `AER_CHECKPOINT` (0/1) · `AER_RESUME_MAX_RETRIES` · `AER_RESUME_BACKOFF_S` · `AER_CHECKPOINT_RETENTION_DAYS`.
+- **Still to validate on-server (behavioral, not a one-liner):** a crash INSIDE a `task`-spawned subagent
+  must resume without restarting from scratch (kill mid-subagent → `--resume` → confirm it continues).
+  Also eyeball checkpoint-DB growth vs deepagents #2876 (SummarizationMiddleware not trimming messages →
+  unbounded checkpoint bloat) — our delete-on-success keeps it bounded for clean runs.
+- **Observability (LangSmith/Langfuse) deferred** — the cloud tracers are egress-blocked on the H200;
+  if pursued later, self-host (a callback → `artifacts/<id>/trace.jsonl`), not a cloud endpoint.
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

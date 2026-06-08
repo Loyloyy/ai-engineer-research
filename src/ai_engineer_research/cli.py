@@ -8,11 +8,13 @@ import sys
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Stage-2 deep researcher (M1 lean agentic loop).")
-    ap.add_argument("topic", help="research topic")
+    ap.add_argument("topic", nargs="?", help="research topic (omit when using --resume)")
     ap.add_argument("--brief", default="", help="freeform context/brief")
     ap.add_argument("--seed-page", action="append", default=[], metavar="PAGE_ID",
                     help="Stage-1 wiki page id to seed from (repeatable)")
     ap.add_argument("--parent-id", default=None, help="refine an existing artifact (lineage)")
+    ap.add_argument("--resume", default=None, metavar="RUN_ID",
+                    help="resume a prior truncated run from its checkpoint (topic/brief recovered)")
     ap.add_argument("--interactive", action="store_true", help="enable the interactive scope gate (M1 later)")
     ap.add_argument("-v", "--verbose", action="store_true", help="INFO logging")
     args = ap.parse_args(argv)
@@ -22,15 +24,22 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
 
-    from .core import run_research
+    if args.resume:
+        from .core import resume_research
 
-    report, artifact = run_research(
-        args.topic,
-        args.brief,
-        seed_pages=args.seed_page or None,
-        parent_id=args.parent_id,
-        interactive=args.interactive,
-    )
+        report, artifact = resume_research(args.resume)
+    else:
+        if not args.topic:
+            ap.error("topic is required (or use --resume RUN_ID)")
+        from .core import run_research
+
+        report, artifact = run_research(
+            args.topic,
+            args.brief,
+            seed_pages=args.seed_page or None,
+            parent_id=args.parent_id,
+            interactive=args.interactive,
+        )
 
     print(f"\n=== artifact {artifact.id} v{artifact.version} ===")
     print(

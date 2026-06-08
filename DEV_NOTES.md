@@ -123,8 +123,23 @@ Pinned `deepagents==0.6.7`. Verified against the docs/reference rather than gues
     reached disk (scope/notes/code/partial report), still writes the coverage manifest, and returns a
     (content-light if needed) artifact — never a raw traceback.
 - **Record wall-clock `elapsed_s`** (+ `truncated`) in the run ledger → surfaces in `coverage.json`,
-  the run log, and the CLI summary. (Deferred: enforced wall-clock cap + LangGraph checkpointer for
-  resume-across-runs, if long runs become flaky.)
+  the run log, and the CLI summary.
+- **Crash-resume via LangGraph checkpointer** (now built — see DECISIONS "Run checkpointing + resume").
+  - deepagents 0.6.7's `create_deep_agent` **accepts a `checkpointer=` kwarg** (verified) → pass a
+    `SqliteSaver`; no need to recompile the returned graph yourself.
+  - The saver ships in a **separate package** (`langgraph-checkpoint-sqlite`, NOT in deepagents/langgraph
+    core). `checkpoint.py` lazy-imports it and returns None if absent → runs degrade to no-resume, never
+    crash. Construct as `SqliteSaver(sqlite3.connect(path, check_same_thread=False))` then `.setup()`
+    (subagents may touch the saver from worker threads → `check_same_thread=False` is required).
+  - **Resume re-invokes with `None` input + the same `{"configurable": {"thread_id": run_id}}`** — passing
+    the original messages again would APPEND, not continue. `delete_thread(run_id)` (verified present)
+    does the surgical on-success cleanup of the shared DB.
+  - **Ledger is an in-memory singleton** → it does NOT survive a cross-process `--resume`; we snapshot it
+    to `run_dir/ledger.json` and restore on resume (else coverage/sources cover only the resumed segment).
+  - **SQLite on NFS**: fine here because runs are single-writer (one run at a time, single endpoint); did
+    NOT enable WAL (WAL-on-NFS is itself fragile). Revisit only if runs ever overlap.
+  - **Watch checkpoint-DB growth** (deepagents #2876: summarization doesn't trim `state.messages` →
+    unbounded checkpoint bloat). Bounded for clean runs by delete-on-success + the truncated-run age sweep.
 
 ## Grounding discipline (what makes it a *researcher*, not a chatbot)
 

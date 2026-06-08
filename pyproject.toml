@@ -8,6 +8,9 @@ dependencies = [
   # Agent harness over LangGraph. BETA — pinned; bump only after changelog review + pip-audit.
   # Supply-chain vigilance applies to deepagents / langgraph / langchain (see DECISIONS).
   "deepagents==0.6.7",
+  # Crash-resume: LangGraph SqliteSaver checkpointer (shared DB, surgical per-run cleanup). Loaded
+  # lazily + tolerated-absent in checkpoint.py, so this stays import-light for the local 3.10 box.
+  "langgraph-checkpoint-sqlite>=2.0",
   # Role -> ChatModel factory returns ChatOpenAI (OpenAI-compatible: vLLM + frontier).
   "langchain-openai>=0.3",
   "langchain>=1.0",

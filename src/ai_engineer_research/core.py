@@ -55,6 +55,48 @@ def run_research(
     # Run the agentic loop (writes report.md / scope.md / reflection.md / coverage.json into the run dir).
     report_md, run_dir, _ = run_gather(topic, full_brief, config=cfg, run_id=artifact_id, interactive=interactive)
 
+    return _finalize(
+        cfg, topic, full_brief, report_md, run_dir,
+        artifact_id=artifact_id, version=version, lineage_parent=lineage_parent, seed_pages=seed_pages or [],
+    )
+
+
+def resume_research(
+    run_id: str,
+    *,
+    config: RunConfig | None = None,
+) -> tuple[str, DeepResearchArtifact]:
+    """Resume a prior TRUNCATED run from its checkpoint and finalize the artifact.
+
+    Topic/brief/lineage are recovered from the partial artifact that the truncated run already saved
+    (run_research always persists one, even content-light). The completed artifact OVERWRITES that
+    same version (this finishes the run, it is not a new refinement). Returns the same contract tuple.
+    """
+    cfg = config or load_config()
+    parent = load_artifact(run_id)  # latest version = the partial saved when the run truncated
+    report_md, run_dir, _ = run_gather(
+        parent.topic, parent.brief, config=cfg, run_id=run_id, resume=True
+    )
+    return _finalize(
+        cfg, parent.topic, parent.brief, report_md, run_dir,
+        artifact_id=run_id, version=parent.version, lineage_parent=parent.parent_id,
+        seed_pages=parent.seed_pages,
+    )
+
+
+def _finalize(
+    cfg: RunConfig,
+    topic: str,
+    full_brief: str,
+    report_md: str,
+    run_dir,
+    *,
+    artifact_id: str,
+    version: int,
+    lineage_parent: str | None,
+    seed_pages: list[str],
+) -> tuple[str, DeepResearchArtifact]:
+    """Shared tail for run_research/resume_research: ground sources in the ledger → extract → save."""
     # Ground the artifact in what was actually fetched (verifiable sources) + per-run coverage telemetry.
     ledger = current_ledger()
     sources = sources_from_urls(ledger.fetched_urls())
@@ -72,7 +114,7 @@ def run_research(
             artifact_id=artifact_id,
             version=version,
             parent_id=lineage_parent,
-            seed_pages=seed_pages or [],
+            seed_pages=seed_pages,
             model=cfg.artifact.model,
             model_versions=model_versions,
         )
@@ -85,7 +127,7 @@ def run_research(
             model_versions=model_versions,
             topic=topic,
             brief=full_brief,
-            seed_pages=seed_pages or [],
+            seed_pages=seed_pages,
             sources=sources,
             report_markdown=report_md,
         )

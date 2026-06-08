@@ -36,7 +36,10 @@ full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` for th
 - `config.py` — `RunConfig` + `load_config` (`.env` + `config/pipeline.yaml`).
 - `seed.py` — Stage-1 wiki page → research brief (Opinions=hypotheses, Sources, 1-hop links).
 - `domains.py` — reachable-domain policy (egress allowlist, env-overridable).
-- `runlog.py` — per-run fetch ledger → miss-log + coverage manifest (+ elapsed/truncated).
+- `runlog.py` — per-run fetch ledger → miss-log + coverage manifest (+ elapsed/truncated); persisted to
+  `ledger.json` for resume.
+- `checkpoint.py` — crash-resume via LangGraph SqliteSaver (shared `artifacts/checkpoints.sqlite`;
+  delete-on-success; truncated-run age sweep). `core.resume_research` + CLI `--resume`.
 - `tools/` — `search.py` (SearXNG), `scrape.py` (browserless `fetch_url`), `github.py`/`hf.py`/`pypi.py`
   (M2 structured APIs). `WEB_TOOLS` (lean M1) vs `STRUCTURED_TOOLS`.
 - `artifact/` — `schema.py` (DeepResearchArtifact), `store.py`, `validate.py`, `extract.py`.
@@ -48,3 +51,4 @@ full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md` for th
 - `<ROLE>_MODEL/_API_BASE/_API_KEY` (strategic/smart/fast/judge) · `LEAD_ROLE` · `SEARX_URL`
 - `AER_MULTI_AGENT` (0/1) · `AER_FETCH_BACKEND` (http/browser/auto) · `AER_REACHABLE_DOMAINS`
 - `AER_LLM_TIMEOUT_S` / `AER_LLM_MAX_RETRIES` · `GITHUB_TOKEN` (optional, lifts GH rate limit)
+- `AER_CHECKPOINT` (0/1) · `AER_RESUME_MAX_RETRIES` · `AER_RESUME_BACKOFF_S` · `AER_CHECKPOINT_RETENTION_DAYS`

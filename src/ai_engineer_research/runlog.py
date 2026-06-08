@@ -11,8 +11,13 @@ the run driver reads + writes the manifest at the end.
 """
 from __future__ import annotations
 
+import json
+import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Outcome vocabulary for a fetch attempt.
 OK = "ok"                       # content retrieved
@@ -71,3 +76,36 @@ def current_ledger() -> FetchLedger:
 
 def record_fetch(url: str, host: str, outcome: str) -> None:
     _ledger.record(url, host, outcome)
+
+
+# --- Persistence (for crash-resume) --------------------------------------------------------------
+# The ledger is an in-memory singleton, so a cross-process `--resume` would otherwise start blank and
+# lose the prior segment's fetches (→ degraded coverage/sources). We snapshot it to the run folder so
+# resume can restore the accumulated attempts. (Auto-retries within ONE process don't need this — the
+# singleton persists across attempts — but persisting unconditionally keeps both paths consistent.)
+
+def save_ledger(ledger: FetchLedger, path: Path) -> None:
+    try:
+        Path(path).write_text(
+            json.dumps(
+                {"attempts": ledger.attempts, "elapsed_s": ledger.elapsed_s, "truncated": ledger.truncated},
+                indent=2,
+            )
+        )
+    except OSError as e:
+        logger.warning("could not write ledger %s: %s", path, e)
+
+
+def load_ledger(path: Path) -> FetchLedger:
+    """Restore the singleton from a prior snapshot (for resume); fresh ledger if absent/unreadable."""
+    global _ledger
+    try:
+        data = json.loads(Path(path).read_text())
+        _ledger = FetchLedger(
+            attempts=list(data.get("attempts", [])),
+            elapsed_s=data.get("elapsed_s"),
+            truncated=bool(data.get("truncated", False)),
+        )
+    except (OSError, ValueError):
+        _ledger = FetchLedger()
+    return _ledger

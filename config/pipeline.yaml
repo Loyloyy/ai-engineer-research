@@ -5,9 +5,14 @@ research:
   # Role that drives the LEAD agent. M0 validates this role's tool-calling.
   # Override at runtime with LEAD_ROLE in .env.
   lead_role: strategic
-  max_iterations: 3
-  wall_clock_timeout_s: 1800
-  max_search_results_per_query: 5
+  # Multi-agent depth/breadth (each has an AER_* env override). thoroughness scales per-subagent
+  # gather rounds + the lead's recursion budget: light | standard | deep.
+  thoroughness: standard
+  max_investigators: 2      # cap on ad-hoc focused-investigator spawns (the 3 fixed subagents always run)
+  code_max_repos: 3         # code-scout: how many top repos to gather code from
+  code_files_per_repo: 3    # code-scout: representative source files saved per repo
+  # Pre-research clarifying questions (CLI prompts on a TTY; a UI can drive the same step).
+  clarify: true
 
 artifact:
   enabled: true

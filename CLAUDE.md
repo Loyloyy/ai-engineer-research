@@ -36,7 +36,12 @@ for the Stage 2→3 handoff.
 - `core.py` — `run_research(...)`, the stable contract (assemble brief → loop → extract → save).
 - `agent.py` — the lead research loop: lean M1 (`SYSTEM_PROMPT`) + multi-agent M2 (`M2_LEAD_PROMPT`),
   `build_research_agent(multi_agent=)`, `run_gather(...)` (timing + salvage-on-error).
-- `subagents.py` — M2 subagent specs: code-scout / landscape / maturity + focused-investigator.
+- `subagents.py` — M2 subagent roster built per-run via `build_subagents(...)` (code-scout / landscape /
+  maturity + focused-investigator); injects the thoroughness + code-breadth knobs into prompts.
+- `clarify.py` — pre-research clarifying questions (`clarify_questions`/`fold_answers`, env `AER_CLARIFY`);
+  reusable by CLI + a future UI, so the headless `run_research` contract stays untouched.
+- `prompts.py` — optional prompt-body overrides: `config/prompts/<name>.md` replaces a lead/subagent body
+  (`AER_PROMPTS_DIR` to relocate); code still appends grounding/outputs/knobs so overrides can't break a run.
 - `models.py` — `build_chat_model(role)` → `ChatOpenAI` (role→model factory; env timeout/retries).
 - `config.py` — `RunConfig` + `load_config` (`.env` + `config/pipeline.yaml`).
 - `seed.py` — Stage-1 wiki page → research brief (Opinions=hypotheses, Sources, 1-hop links).
@@ -60,7 +65,10 @@ for the Stage 2→3 handoff.
 
 ## Key env knobs (all in gitignored `.env`)
 - `<ROLE>_MODEL/_API_BASE/_API_KEY` (strategic/smart/fast/judge) · `LEAD_ROLE` · `SEARX_URL`
-- `AER_MULTI_AGENT` (0/1) · `AER_FETCH_BACKEND` (http/browser/auto) · `AER_REACHABLE_DOMAINS`
+- `AER_DEFAULT_ROLE` (blank role triples fall back to this; default strategic — single-model setup)
+- `AER_MULTI_AGENT` (0/1) · `AER_THOROUGHNESS` (light/standard/deep) · `AER_MAX_INVESTIGATORS` · `AER_CODE_MAX_REPOS` / `AER_CODE_FILES_PER_REPO`
+- `AER_CLARIFY` (0/1, pre-research questions) · `AER_PROMPTS_DIR` (relocate `config/prompts/` overrides)
+- `AER_FETCH_BACKEND` (http/browser/auto) · `AER_REACHABLE_DOMAINS`
 - `AER_LLM_TIMEOUT_S` / `AER_LLM_MAX_RETRIES` · `GITHUB_TOKEN` (optional, lifts GH rate limit)
 - `AER_CHECKPOINT` (0/1) · `AER_RESUME_MAX_RETRIES` · `AER_RESUME_BACKOFF_S` · `AER_CHECKPOINT_RETENTION_DAYS`
 - `AER_TRACING` (0/1) · `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` (self-hosted; via `service-depot`)

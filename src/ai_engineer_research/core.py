@@ -11,6 +11,7 @@ M1 lean loop: assemble brief (caller brief + Stage-1 wiki seed) → run the agen
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from .agent import ARTIFACTS_ROOT, run_gather
@@ -26,6 +27,8 @@ from .config import RunConfig, load_config
 from .runlog import current_ledger
 from .seed import seed_brief
 from .tracing import build_tracer, flush_tracer
+
+logger = logging.getLogger(__name__)
 
 
 def run_research(
@@ -52,7 +55,7 @@ def run_research(
                 full_brief + "\n\nBuild on these prior findings; deepen/extend, do NOT repeat:\n" + prior
             ).strip()
     else:
-        artifact_id, version, lineage_parent = new_artifact_id(), 1, None
+        artifact_id, version, lineage_parent = new_artifact_id(cfg.multi_agent), 1, None
 
     # Run the agentic loop (writes report.md / scope.md / reflection.md / coverage.json into the run dir).
     report_md, run_dir, _ = run_gather(topic, full_brief, config=cfg, run_id=artifact_id, interactive=interactive)
@@ -171,7 +174,50 @@ def _finalize(
         )
 
     save_artifact(artifact, root=run_dir.parent)  # artifacts/<id>/vNN.json, alongside report.md
+    _write_run_index(run_dir, artifact)
     return report_md, artifact
+
+
+def _write_run_index(run_dir, artifact: DeepResearchArtifact) -> None:
+    """Write `00_INDEX.md` — a human reading-guide listing the run's files in pipeline order.
+
+    Lists only files/dirs that actually exist (lean runs lack notes/, code/, comparison.md), numbered
+    in the order the pipeline produces them, each with a one-line description. The `00_` prefix sorts it
+    to the top of `ls`. Best-effort: never fails the run.
+    """
+    # (name, is_dir, description) in the order the pipeline produces them.
+    catalog = [
+        ("run_meta.json", False, "run inputs (topic / brief / mode) — written before the first LLM call"),
+        ("scope.md", False, "the agent's research question, sub-questions, and success criteria"),
+        ("notes", True, "per-subagent working notes (code-scout / landscape / maturity) — multi-agent"),
+        ("code", True, "real source files gathered by code-scout, as code/<owner-repo>/<file> — multi-agent"),
+        ("reflection.md", False, "gap analysis + verdicts on the seed/brief hypotheses"),
+        ("comparison.md", False, "subject-vs-alternatives matrix — multi-agent"),
+        ("report.md", False, "the main human-readable cited report — READ THIS FIRST"),
+        ("coverage.json", False, "grounding telemetry: fetched vs blocked, elapsed_s, truncated flag"),
+        ("ledger.json", False, "fetch-ledger snapshot (survives a cross-process --resume)"),
+        (f"v{artifact.version:02d}.json", False, "the structured DeepResearchArtifact (the Stage 2->3 contract)"),
+    ]
+    lines = [
+        f"# Run {artifact.id} — file index",
+        "",
+        f"_Topic:_ {artifact.topic}",
+        "",
+        "Files are listed in the order the pipeline produces them. Start with `report.md`.",
+        "",
+    ]
+    n = 0
+    for name, is_dir, desc in catalog:
+        p = run_dir / name
+        if not (p.is_dir() if is_dir else p.exists()):
+            continue
+        n += 1
+        label = f"{name}/" if is_dir else name
+        lines.append(f"{n}. **`{label}`** — {desc}")
+    try:
+        (run_dir / "00_INDEX.md").write_text("\n".join(lines) + "\n")
+    except OSError as e:
+        logger.warning("could not write 00_INDEX.md: %s", e)
 
 
 def _assemble_brief(topic: str, brief: str, seed_pages: list[str] | None) -> str:

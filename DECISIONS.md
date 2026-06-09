@@ -379,7 +379,7 @@ traces serve; (b) Stage 3 commits to Langfuse. So tracing is now worth wiring.
 - **One instance, project-per-consumer.** Not one Langfuse per stage — ONE instance, with a Langfuse
   *project* per app (`stage-2-research`, `stage-3-poc`). Sharing is pure runtime config: each app points at
   the instance with its own project key. No cross-repo code, no secrets in tracked files.
-- **Shared infra lives in its own GENERIC repo `service-depot`** (sibling at `/mnt/d/aloy/personal/`), not
+- **Shared infra lives in its own GENERIC repo `service-depot`** (a sibling checkout alongside this repo), not
   inside a stage repo. Reasons (decided with the user): the repos are public portfolio pieces, so shared
   *platform* services (Langfuse + SearXNG; evals later) reading as their own thing demonstrates better
   judgment than burying a 6-service stack in one stage. Apps are pure consumers (env + a shared docker
@@ -415,6 +415,50 @@ traces serve; (b) Stage 3 commits to Langfuse. So tracing is now worth wiring.
 - **Status:** Langfuse stack (`service-depot`) + the `depot` launcher + Stage-2 `tracing.py` wiring built &
   locally validated (logic/dry-run); end-to-end trace verification is a server step. Stack adapted from
   Langfuse's official v3 self-host compose (profiles + single-service `depot-net` exposure + telemetry-off).
+
+## Run ergonomics: mode-tagged ids, per-run index, tunable depth/breadth, clarifying questions
+Batch of UX/config changes (confirmed with the user) so a run is easier to read and tune:
+- **Dead config removed.** `max_iterations`, `wall_clock_timeout_s`, `max_search_results_per_query` were in
+  `RunConfig`/`pipeline.yaml` but read nowhere (search count is the agent's per-call choice via
+  `web_search(max_results=…)`, 1–10). Deleted to stop documenting knobs that do nothing.
+- **Run id carries the mode.** `new_artifact_id(multi_agent)` appends `-l`/`-m` AFTER the timestamp
+  (`dra-<ts>-<rand>-m`) — visible at a glance without breaking the chronological `ls` sort, and nothing
+  parses the id positionally (it's only a dir name + checkpoint key).
+- **`00_INDEX.md` per run** (`core._write_run_index`) — lists only the files that run produced, in pipeline
+  order, with one-line descriptions; `00_` sorts it to the top. Chose this over renaming files with order
+  prefixes, which would break the Stage-3 contract + resume (files are read by exact name).
+- **Tunable depth/breadth** (env or `pipeline.yaml`): `AER_THOROUGHNESS` (`light|standard|deep`),
+  `AER_MAX_INVESTIGATORS` (focused-investigator fan-out cap; the 3 fixed subagents always run),
+  `AER_CODE_MAX_REPOS`/`AER_CODE_FILES_PER_REPO` (code-scout breadth). Subagents are now built per-run by
+  `subagents.build_subagents(...)` (was a static list) so the knobs inject into prompts. **Honest limit:**
+  deepagents exposes no per-subagent loop counter, so thoroughness is a *prompt-injected* gather-round
+  target + a scaled recursion budget (`_RECURSION_BY_THOROUGHNESS`), not an enforced iteration cap.
+- **Clarifying questions** (`clarify.py`, `AER_CLARIFY`, default on). Generation lives in the package
+  (`clarify_questions`/`fold_answers`) — NOT the CLI — so a planned UI reuses it and the headless
+  `run_research` contract is untouched (it just gets an enriched brief). CLI prompts only on a TTY
+  (`--no-clarify` to skip); the old no-op `--interactive` stub was replaced by this. Lean toward asking but
+  never enforce (skipped when non-interactive). Kept `docker-compose.override.yml` over a single edited
+  compose: the override pattern is standard and the only way to honor data-hygiene rule #1 (no host
+  specifics in tracked files).
+
+## Single-model setup: role-triple fallback
+`build_chat_model` now resolves a role's endpoint via `_resolve_prefix`: if `<ROLE>_MODEL` is blank, it
+falls back to `AER_DEFAULT_ROLE` (default `strategic`) with a logged warning. So a one-model deployment
+fills ONLY `STRATEGIC_*` and leaves smart/fast/judge blank. Rationale: the live pipeline only calls
+`strategic` (lead/subagents/clarify) + `smart` (extraction); `fast`/`judge` are unused until eval is wired,
+so requiring four triples was friction. Sampling defaults stay keyed on the *original* role (the task
+shapes temperature; only the endpoint is shared). A truly-unset default still raises a clear error.
+
+## Customizable prompts via file overrides (not .env)
+Lead + subagent prompts are overridable by dropping `config/prompts/<name>.md` (`AER_PROMPTS_DIR` to
+relocate); `prompts.load_prompt(name, default)` returns the override or the baked-in default. **Chose files
+over `.env`** (user asked): prompts are long multi-line markdown that fights `.env` syntax (`#`/`$`/quotes/
+newlines), and they aren't secret — you WANT them tracked + diffable + reviewable, whereas `.env` is the
+gitignored secrets-only file. **Granularity = body-override, code keeps the rules:** an override replaces
+only the persona+method BODY; the code always appends grounding, required file outputs (report.md/notes/
+code), and the injected knobs (thoroughness, fan-out budget, code-count) — so a custom prompt can't silently
+drop grounding or break the artifact. Subagent prompts were refactored into `_BODIES` + `_requirements()`;
+lead prompts get a code-appended `_LEAD_RULES` tail. Descriptions (dispatch hints) stay non-overridable.
 
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,

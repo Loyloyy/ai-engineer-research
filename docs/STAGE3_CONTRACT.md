@@ -14,6 +14,7 @@ How the **PoC Builder (Stage 3, future)** consumes the output of this Deep Resea
 
 ```
 artifacts/<run_id>/
+├── 00_INDEX.md       # human reading guide: this run's files in pipeline order (start here)
 ├── vNN.json          # the DeepResearchArtifact (machine-readable contract) — Stage 3's primary input
 ├── report.md         # full prose report (human-facing)
 ├── comparison.md     # subject-vs-alternatives matrix (multi-agent runs)
@@ -22,11 +23,13 @@ artifacts/<run_id>/
 ├── scope.md          # the run's research scope (sharp question + success criteria + assumptions)
 ├── reflection.md     # gaps, confidence tiers, confirm/contradict verdict on seed opinions
 ├── notes/            # per-subagent raw findings (code-scout.md / landscape.md / maturity.md / focused-*.md)
-└── coverage.json     # fetch ledger summary (what was reachable vs blocked)
+├── coverage.json     # fetch ledger summary (what was reachable vs blocked)
+└── run_meta.json · ledger.json   # resume bookkeeping (not part of the Stage-3 contract)
 ```
 
-`<run_id>` = `dra-<YYYYMMDD>-<HHMMSS>-<rand6>` (UTC, sortable). The `vNN.json` and all companion files
-are **co-located** in the same folder, so Stage 3 locates everything from the artifact's `id`.
+`<run_id>` = `dra-<YYYYMMDD>-<HHMMSS>-<rand6>` (UTC, sortable), optionally suffixed `-l` (lean) or `-m`
+(multi-agent). The `vNN.json` and all companion files are **co-located** in the same folder, so Stage 3
+locates everything from the artifact's `id`.
 
 **Two ways Stage 3 ingests a run:**
 1. **The artifact** (`vNN.json`) — structured, validated, the contract below. *Primary.*

@@ -33,6 +33,29 @@ def _pick_unfinished() -> str | None:
     return rows[int(sel) - 1]["id"]
 
 
+def _maybe_clarify(topic: str, brief: str, *, no_clarify: bool) -> str:
+    """Ask clarifying questions before research and fold the answers into the brief.
+
+    Default-on, but silently skipped when --no-clarify, AER_CLARIFY=0, or stdin isn't a TTY (so Docker
+    batch runs never hang on input). A future UI calls clarify_questions()/fold_answers() directly.
+    """
+    if no_clarify or not sys.stdin.isatty():
+        return brief
+    from .config import load_config
+
+    cfg = load_config()
+    if not cfg.clarify:
+        return brief
+    from .clarify import clarify_questions, fold_answers
+
+    questions = clarify_questions(topic, brief, cfg)
+    if not questions:
+        return brief
+    print("\nA few clarifying questions to sharpen the scope (press Enter to skip any):")
+    qa = [(q, input(f"  • {q}\n    > ").strip()) for q in questions]
+    return fold_answers(brief, qa)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Stage-2 deep researcher (M1 lean agentic loop).")
     ap.add_argument("topic", nargs="?", help="research topic (omit when using --resume)")
@@ -49,7 +72,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="delete ALL unfinished runs' checkpoints (add --with-folders to also delete run dirs)")
     ap.add_argument("--with-folders", action="store_true", help="with --clean: also delete the run folders")
     ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt for --clean")
-    ap.add_argument("--interactive", action="store_true", help="enable the interactive scope gate (M1 later)")
+    ap.add_argument("--no-clarify", action="store_true",
+                    help="skip the pre-research clarifying questions (also via AER_CLARIFY=0)")
     ap.add_argument("-v", "--verbose", action="store_true", help="INFO logging")
     args = ap.parse_args(argv)
 
@@ -121,12 +145,12 @@ def main(argv: list[str] | None = None) -> int:
             ap.error("topic is required (or use --resume RUN_ID)")
         from .core import run_research
 
+        brief = _maybe_clarify(args.topic, args.brief, no_clarify=args.no_clarify)
         report, artifact = run_research(
             args.topic,
-            args.brief,
+            brief,
             seed_pages=args.seed_page or None,
             parent_id=args.parent_id,
-            interactive=args.interactive,
         )
 
     print(f"\n=== artifact {artifact.id} v{artifact.version} ===")

@@ -17,16 +17,19 @@ from .schema import DeepResearchArtifact
 ARTIFACTS_ROOT = Path("artifacts")
 
 
-def new_artifact_id() -> str:
-    """Run/artifact id = sortable UTC timestamp + short random suffix.
+def new_artifact_id(multi_agent: bool | None = None) -> str:
+    """Run/artifact id = sortable UTC timestamp + short random suffix (+ optional mode tag).
 
-    e.g. `dra-20260603-153045-a1b2c3`. The `dra-<YYYYMMDD>-<HHMMSS>-` prefix makes run folders
+    e.g. `dra-20260603-153045-a1b2c3-m`. The `dra-<YYYYMMDD>-<HHMMSS>-` prefix makes run folders
     human-readable and chronologically sortable (`ls` orders by date); the suffix disambiguates
-    runs within the same second. Timestamp is UTC, matching the artifact's `generated_at`.
+    runs within the same second. When `multi_agent` is given, a trailing `-l` (lean) / `-m`
+    (multi-agent) tag records the run topology at a glance — placed AFTER the timestamp so it does
+    not disturb the chronological `ls` sort. Timestamp is UTC, matching the artifact's `generated_at`.
     The id is created once at v1 and preserved across refinement versions (lineage key).
     """
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    return f"dra-{ts}-{uuid.uuid4().hex[:6]}"
+    tag = "" if multi_agent is None else ("-m" if multi_agent else "-l")
+    return f"dra-{ts}-{uuid.uuid4().hex[:6]}{tag}"
 
 
 def _dir(artifact_id: str, root: Path) -> Path:

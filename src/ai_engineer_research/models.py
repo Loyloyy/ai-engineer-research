@@ -13,9 +13,12 @@ Rule #1/#8: NO concrete model name ever appears in app code — it is `.env`-dri
 """
 from __future__ import annotations
 
+import logging
 import os
 
 from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
 
 ROLES = ("strategic", "smart", "fast", "judge")
 
@@ -39,6 +42,23 @@ def _require(name: str) -> str:
     return val
 
 
+def _resolve_prefix(role: str) -> str:
+    """Env prefix to use for a role: its own (<ROLE>_MODEL set) or a fallback default role.
+
+    Lets a single-model setup fill ONLY the default role's triple (default `strategic`, override with
+    AER_DEFAULT_ROLE) and leave the others blank — unset roles transparently reuse that endpoint. Returns
+    the role's own prefix when truly unset so `_require` raises a clear error (rather than hiding it).
+    """
+    prefix = role.upper()
+    if os.environ.get(f"{prefix}_MODEL", "").strip():
+        return prefix
+    default_role = (os.environ.get("AER_DEFAULT_ROLE", "strategic").strip().lower() or "strategic")
+    if default_role in ROLES and default_role != role and os.environ.get(f"{default_role.upper()}_MODEL", "").strip():
+        logger.warning("role %r has no %s_MODEL set; falling back to the %r endpoint", role, prefix, default_role)
+        return default_role.upper()
+    return prefix
+
+
 def build_chat_model(role: str, **overrides) -> ChatOpenAI:
     """Build the ChatOpenAI for a role from its `.env` triple.
 
@@ -56,7 +76,9 @@ def build_chat_model(role: str, **overrides) -> ChatOpenAI:
     if role not in ROLES:
         raise ValueError(f"Unknown role {role!r}; expected one of {ROLES}.")
 
-    prefix = role.upper()
+    # Resolve the endpoint prefix (own triple, or the AER_DEFAULT_ROLE fallback). Sampling defaults
+    # below stay keyed on the ORIGINAL role — the task shapes temperature, the endpoint may be shared.
+    prefix = _resolve_prefix(role)
     # Long multi-agent runs make big generations on long contexts → a single call can exceed 120s,
     # and a timeout aborts the whole run. Default generously; tune via env without code change.
     timeout_s = float(os.environ.get("AER_LLM_TIMEOUT_S", "300"))

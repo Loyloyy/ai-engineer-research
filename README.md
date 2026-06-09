@@ -16,10 +16,55 @@ The core is **headless**. The stable contract is:
 run_research(...) -> (report_markdown, DeepResearchArtifact)
 ```
 
+## Architecture — one pipeline, two modes
+
+Every run is the same `run_research(...)` pipeline: assemble the brief → run the LEAD agent loop →
+ground the citations in what was *actually* fetched (the run ledger) → schema-constrained extraction →
+save a versioned artifact. The only fork is **how the gathering happens** — lean (one agent) vs.
+multi-agent (a lead that delegates). `AER_MULTI_AGENT` (or `pipeline.yaml`) picks the mode; everything
+on either side of the loop is identical.
+
+```
+ Stage-1 wiki seed ┐
+ + caller brief    ├─▶ assemble brief ─▶┌─────────── LEAD agent loop ───────────┐─▶ ground sources ─▶ extract ─▶ artifacts/<id>/
+ + clarifying Q&A ─┘   (seed.py)         │                                        │   (run ledger →     (vNN.json,    report.md, vNN.json,
+                                         │                                        │    verified cites)  smart role)   coverage.json, …
+                                         │  LEAN (default) — one agent:           │
+                                         │    scope → search/fetch → reflect → report.md
+                                         │                                        │
+                                         │  MULTI-AGENT (AER_MULTI_AGENT=1) — lead delegates via `task`:
+                                         │    ├─ code-scout  → code/**  + notes/code-scout.md
+                                         │    ├─ landscape   →            notes/landscape.md
+                                         │    ├─ maturity    →            notes/maturity.md
+                                         │    └─ focused-investigator ×N  (ad-hoc gaps, capped by AER_MAX_INVESTIGATORS)
+                                         │    → lead reconciles → comparison.md + report.md
+                                         └────────────────────────────────────────┘
+```
+
+**Depth/breadth knobs** (env, or `config/pipeline.yaml`): `AER_THOROUGHNESS` (`light|standard|deep` —
+scales per-subagent gather rounds + the recursion budget), `AER_MAX_INVESTIGATORS` (fan-out cap),
+`AER_CODE_MAX_REPOS` / `AER_CODE_FILES_PER_REPO` (code-scout's gather breadth). Before a run, the lead can
+ask **clarifying questions** (`AER_CLARIFY`, on by default; the CLI prompts on a TTY, a UI can drive the
+same step) — see `clarify.py`.
+
+## How search works (SearXNG)
+
+The researcher never scrapes a search engine directly — it queries a **self-hosted [SearXNG](https://github.com/searxng/searxng)**
+metasearch instance over JSON. Two decoupled tools (hard rule #4): `web_search(query, max_results)` hits
+SearXNG's JSON API and returns ranked results, each tagged **`[✓]`** (reachable → fetchable in full here)
+or **`[✗]`** (blocked from this network → snippet only, weak signal); then `fetch_url(url)` pulls a `[✓]`
+page's full text. The agent decides how many results to request per call (1–10).
+
+SearXNG itself runs in the sibling **[`service-depot`](../service-depot)** repo (shared services), not
+here. This app reaches it **by name** over the `depot-net` Docker network — `SEARX_URL=http://searxng:8080`,
+set in the base compose. So to use it: bring depot up first (`./depot up stage-2`); no per-run config is
+needed. The `[✓]`/`[✗]` tagging comes from the reachability policy in `domains.py` (override the reachable
+set with `AER_REACHABLE_DOMAINS` when a new source becomes reachable — no code change).
+
 ## Models — no proxy
 
 Each role binds its own OpenAI-compatible endpoint directly (vLLM or frontier); there is no
-LiteLLM gateway. Configure four role triples in `.env` (see `.env.example`):
+LiteLLM gateway. Configure the role triples in `.env` (see `.env.example`):
 
 | role | use | env triple |
 |------|-----|-----------|
@@ -30,6 +75,10 @@ LiteLLM gateway. Configure four role triples in `.env` (see `.env.example`):
 
 `build_chat_model(role)` (`src/ai_engineer_research/models.py`) turns a triple into a `ChatOpenAI`.
 **No concrete model name appears in tracked code** — it is `.env`-driven.
+
+> **Single-model setup:** only `strategic` (lead/subagents/clarify) + `smart` (extraction) are used by the
+> live pipeline today. Any role whose `_MODEL` is blank falls back to `AER_DEFAULT_ROLE` (default
+> `strategic`), so you can fill **just `STRATEGIC_*`** and leave the rest blank.
 
 ## Build & run (server, containerized)
 
@@ -84,17 +133,20 @@ docker-compose run --rm -e AER_MULTI_AGENT=1 app python -m ai_engineer_research.
 docker-compose run --rm app python -m ai_engineer_research.cli "<topic>" --seed-page <Wiki-Page-Id>
 ```
 
-Each run writes a timestamped folder `artifacts/<id>/`:
+Each run writes a timestamped folder `artifacts/<id>/`. The id ends in **`-l`** (lean) or **`-m`**
+(multi-agent) — placed after the timestamp so `ls` still sorts chronologically:
 
 ```
+00_INDEX.md     (reading guide — files in pipeline order, generated per run)
 report.md · comparison.md · code/** · scope.md · reflection.md · notes/** · coverage.json · vNN.json
 run_meta.json · ledger.json     (resume bookkeeping)
 ```
 
-`vNN.json` is the structured **`DeepResearchArtifact`** (the Stage 2→3 contract); `coverage.json` records
+`00_INDEX.md` lists exactly the files that run produced, in order, with one-line descriptions (start
+there). `vNN.json` is the structured **`DeepResearchArtifact`** (the Stage 2→3 contract); `coverage.json` records
 grounding telemetry (fetched vs blocked) + wall-clock. Programmatic entry: `run_research(...)` in
-`ai_engineer_research.core`. How it all fits together: see **`DEV_NOTES.md`** (learnings) and
-**`DECISIONS.md`** (architecture log).
+`ai_engineer_research.core`. What every folder/file means (incl. per-mode): **[`docs/REPO_GUIDE.md`](docs/REPO_GUIDE.md)**.
+How it all fits together: see **`DEV_NOTES.md`** (learnings) and **`DECISIONS.md`** (architecture log).
 
 ### Resume & manage long runs
 

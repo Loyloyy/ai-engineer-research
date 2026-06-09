@@ -46,7 +46,8 @@ box — the local Python is 3.10 and `deepagents` needs ≥3.11. Everything happ
 ```bash
 # 1. Configure models + endpoints (the only file you MUST edit)
 cp .env.example .env
-#    → fill in the four role triples (see §5). All four can point at the same model.
+#    → fill in the role triples (see §5). All can point at the same model; or fill ONLY strategic
+#      and leave the rest blank (they fall back to it — see §5 "single-model setup").
 
 # 2. Optional host-specific bits (mounts, etc.)
 cp docker/docker-compose.override.yml.example docker/docker-compose.override.yml
@@ -76,6 +77,11 @@ There's **no model name in the code** — it's all `.env`-driven. You fill in fo
 | `smart` | writes the report / extracts the artifact |
 | `fast` | high-volume summarizing / subtasks |
 | `judge` | eval only |
+
+**Single-model setup.** Only `strategic` (lead + subagents + clarify) and `smart` (artifact extraction)
+are used by the live pipeline today; `fast`/`judge` aren't called yet. Any role whose `_MODEL` is blank
+**falls back to `AER_DEFAULT_ROLE`** (default `strategic`), so to run everything on one model just fill the
+`STRATEGIC_*` triple and leave the rest blank (the fallback is logged when it kicks in).
 
 Two vLLM quirks to watch:
 - The served model id **may have a leading slash** — set `<ROLE>_MODEL` to *exactly* what
@@ -116,6 +122,42 @@ docker-compose run --rm app python -m ai_engineer_research.cli "<topic>" --seed-
   comparison matrix, reconciles contradictions. **Takes ~10 minutes and ~50+ LLM calls** — it's
   batch-oriented, so don't expect interactivity. It's robust (300s per-call timeout + salvage-on-error),
   but it's the heavy path.
+
+### Clarifying questions before a run
+
+By default, when you run on a terminal the lead first asks **2–3 clarifying questions** to sharpen scope
+(intended use, constraints, environment, what "done" means); your answers are folded into the brief
+before gathering starts. It's best-effort — skipped automatically when stdin isn't a TTY (so Docker batch
+runs never hang), and a no-op if the model returns no questions. Disable per run with `--no-clarify`, or
+globally with `AER_CLARIFY=0`. (The generator lives in `clarify.py` so a future UI can drive the same
+step — the headless `run_research` contract just receives the enriched brief.)
+
+### Tuning depth & breadth (multi-agent)
+
+Three dials, all env-settable (or in `config/pipeline.yaml`): `AER_THOROUGHNESS` (`light`/`standard`/`deep`
+— how many gather rounds each subagent does + the lead's recursion budget), `AER_MAX_INVESTIGATORS` (how
+many ad-hoc focused-investigator passes the lead may spawn beyond the 3 fixed subagents), and
+`AER_CODE_MAX_REPOS` / `AER_CODE_FILES_PER_REPO` (how much real code code-scout gathers).
+
+**Soft vs. hard — important for expectations.** `AER_CODE_*`, `AER_MAX_INVESTIGATORS`, and the *depth* part
+of `AER_THOROUGHNESS` are **prompt-injected**: the values are written into the agent/subagent system
+prompts as targets the model is *told* to follow (e.g. "save up to 3 files each", "spawn at most 2
+focused-investigators"). They're ceilings/targets, not enforced quotas — nothing in code counts and stops
+the model, and it won't pad to hit a number. deepagents exposes no per-subagent loop counter, so "gather
+rounds" is guidance, not a hard cap. The **one hard switch** is `AER_CLARIFY` (a real on/off code branch),
+plus `AER_THOROUGHNESS` additionally raises the lead's **recursion budget** (a genuine step ceiling:
+light 120 / standard 200 / deep 320) so deeper runs are *allowed* the extra turns. If you ever need a soft
+knob enforced for real, that requires logic in the tools, not just prompt text.
+
+### Customizing the agent prompts
+
+The lead and subagent prompts have built-in defaults, but you can override any of them **without touching
+code** — drop a markdown file in **`config/prompts/`** (`lead_lean.md`, `lead_multi.md`, `code-scout.md`,
+`landscape.md`, `maturity.md`, `focused-investigator.md`). An override replaces that prompt's **body**
+(persona + method); the code still appends the non-negotiable parts — grounding rules, required outputs
+(`report.md`/`notes/*`/`code/**`), and the injected knobs (thoroughness, fan-out, code-count) — so a custom
+prompt can't silently break grounding or the artifact. No file = the default. Relocate the dir with
+`AER_PROMPTS_DIR`. See [`../config/prompts/README.md`](../config/prompts/README.md) for the full list.
 
 ### Resuming a crashed run + managing unfinished runs
 
@@ -180,9 +222,11 @@ dependency on the stack.
 
 ## 8. Reading the output
 
-Each run writes a timestamped folder `artifacts/<id>/`:
+Each run writes a timestamped folder `artifacts/<id>/`. The id ends in **`-l`** (lean) or **`-m`**
+(multi-agent), after the timestamp, so a glance tells you the mode while `ls` still sorts by date:
 
 ```
+00_INDEX.md     ← reading guide: this run's files in pipeline order, one-line descriptions (start here)
 report.md       ← the main human-readable cited report
 comparison.md   ← alternatives matrix (multi-agent only)
 code/**         ← real source files gathered (multi-agent only)
@@ -210,6 +254,10 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 | var | effect |
 |-----|--------|
 | `AER_MULTI_AGENT=1` | turn on the multi-agent path |
+| `AER_THOROUGHNESS` (standard) | per-subagent gather depth + recursion budget: `light` / `standard` / `deep` |
+| `AER_MAX_INVESTIGATORS` (2) | cap on ad-hoc focused-investigator spawns (the 3 fixed subagents always run) |
+| `AER_CODE_MAX_REPOS` (3) / `AER_CODE_FILES_PER_REPO` (3) | code-scout gather breadth: top-N repos × files saved each |
+| `AER_CLARIFY` (1) | pre-research clarifying questions; CLI prompts on a TTY (`--no-clarify` to skip a run) |
 | `AER_FETCH_BACKEND=http\|browser\|auto` | scraping backend (default `http` = httpx+trafilatura; browser is opt-in and its CDN isn't reachable anyway) |
 | `AER_REACHABLE_DOMAINS` | override the preferred-source set (e.g. when a new source becomes reachable — no code change needed) |
 | `AER_LLM_TIMEOUT_S` (300) / `AER_LLM_MAX_RETRIES` (3) | robustness for long runs |
@@ -239,6 +287,7 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 
 ## 11. Where to go deeper
 
+- [`REPO_GUIDE.md`](REPO_GUIDE.md) — what every folder & file means, and which run-folder files appear in each mode.
 - [`../README.md`](../README.md) — the canonical quickstart.
 - [`../DEV_NOTES.md`](../DEV_NOTES.md) — every gotcha and learning (network reachability, vLLM quirks,
   deepagents API traps, grounding discipline). Read this before debugging anything weird.

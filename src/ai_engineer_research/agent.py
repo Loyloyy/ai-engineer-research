@@ -26,14 +26,17 @@ from .config import RunConfig, load_config
 from .models import build_chat_model
 from .runlog import configure_ledger, current_ledger, load_ledger, save_ledger
 from .tracing import build_tracer, flush_tracer, trace_metadata
-from .subagents import RESEARCH_SUBAGENTS
+from .prompts import load_prompt
+from .subagents import build_subagents, thoroughness_directive
 from .tools import STRUCTURED_TOOLS, WEB_TOOLS
 
 logger = logging.getLogger(__name__)
 
 ARTIFACTS_ROOT = Path("artifacts")
-# LangGraph's default recursion limit (25) is too low for a multi-round research loop.
-_RECURSION_LIMIT = 200
+# LangGraph's default recursion limit (25) is too low for a multi-round research loop. The budget
+# scales with AER_THOROUGHNESS: deeper runs make more search/fetch/reflect turns before stopping.
+_RECURSION_BY_THOROUGHNESS = {"light": 120, "standard": 200, "deep": 320}
+_RECURSION_LIMIT = 200  # fallback for an unrecognized thoroughness level
 
 SYSTEM_PROMPT = """You are a meticulous senior technical researcher. Your job: produce a DETAILED, \
 COMPREHENSIVE, well-grounded report a careful engineer would trust to make a build decision. You work \
@@ -118,6 +121,16 @@ sources '(unverified)'. Never fill gaps from background knowledge. Be comprehens
 `report.md` is the primary deliverable — ensure it (and comparison.md) are written before you finish."""
 
 
+# Code-kept rules appended AFTER any custom lead prompt (config/prompts/lead_lean|lead_multi.md), so an
+# override can't drop the non-negotiables: grounding discipline + the required `report.md` deliverable.
+_LEAD_RULES = (
+    "NON-NEGOTIABLE (these hold regardless of any custom instructions above): cite ONLY sources actually "
+    "fetched or returned by a structured API; mark snippet/blocked sources '(unverified)'; never present "
+    "background knowledge as a finding. Write the final report to `report.md` before finishing."
+)
+_LEAD_RULES_MULTI = _LEAD_RULES + " In multi-agent mode also write `comparison.md`."
+
+
 def _run_dir(run_id: str) -> Path:
     d = ARTIFACTS_ROOT / run_id
     d.mkdir(parents=True, exist_ok=True)
@@ -141,19 +154,35 @@ def build_research_agent(cfg: RunConfig, run_dir: Path, multi_agent: bool = Fals
     backend = FilesystemBackend(root_dir=str(run_dir), virtual_mode=True)
     model = build_chat_model(cfg.lead_role)
     extra = {"checkpointer": checkpointer} if checkpointer is not None else {}
+    depth = thoroughness_directive(cfg.thoroughness)
     if multi_agent:
+        # Body is overridable (config/prompts/lead_multi.md); depth + fan-out budget + rules are code-kept.
+        # Fan-out budget caps ad-hoc focused-investigator spawns (the 3 fixed subagents always run).
+        base = load_prompt("lead_multi", M2_LEAD_PROMPT)
+        lead_prompt = (
+            f"{base}\n\n{depth}\n\n"
+            f"FAN-OUT BUDGET: the three fixed subagents (code-scout/landscape/maturity) always run; "
+            f"beyond them, spawn AT MOST {cfg.max_investigators} focused-investigator pass(es), and only "
+            f"for a genuine topic-specific gap — not by default.\n\n{_LEAD_RULES_MULTI}"
+        )
+        subagents = build_subagents(
+            thoroughness=cfg.thoroughness,
+            code_max_repos=cfg.code_max_repos,
+            code_files_per_repo=cfg.code_files_per_repo,
+        )
         return create_deep_agent(
             model=model,
             tools=[*WEB_TOOLS, *STRUCTURED_TOOLS],
-            system_prompt=M2_LEAD_PROMPT,
-            subagents=RESEARCH_SUBAGENTS,
+            system_prompt=lead_prompt,
+            subagents=subagents,
             backend=backend,
             **extra,
         )
+    base = load_prompt("lead_lean", SYSTEM_PROMPT)  # body overridable; depth + rules code-kept
     return create_deep_agent(
         model=model,
         tools=WEB_TOOLS,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=f"{base}\n\n{depth}\n\n{_LEAD_RULES}",
         backend=backend,
         **extra,
     )
@@ -192,7 +221,7 @@ def run_gather(
     cfg = config or load_config()
     use_multi = cfg.multi_agent if multi_agent is None else multi_agent
     configure_default_cache(enabled=True, ttl_hours=24)
-    run_id = run_id or new_artifact_id()
+    run_id = run_id or new_artifact_id(use_multi)
     run_dir = _run_dir(run_id)
     ledger_path = run_dir / "ledger.json"
     # Ledger: fresh for a new run; restored from disk on resume so coverage/sources span both segments.
@@ -208,7 +237,9 @@ def run_gather(
         except OSError as e:
             logger.warning("could not write run_meta.json: %s", e)
     if interactive:
-        logger.info("interactive scope-gate not wired yet; running headless for run %s", run_id)
+        # Clarifying questions are gathered up-front at the CLI/UI layer and folded into the brief
+        # (see clarify.py); the core gather loop itself always runs headless.
+        logger.info("interactive clarify handled pre-brief at the CLI/UI layer; run %s proceeds headless", run_id)
 
     # Checkpointer: shared sqlite DB → crash-resume. Absent dep / disabled → None (no resume, no crash).
     saver = build_checkpointer(checkpoint_db_path(ARTIFACTS_ROOT)) if cfg.checkpoint_enabled else None
@@ -219,7 +250,8 @@ def run_gather(
         sweep_truncated(ARTIFACTS_ROOT, saver, cfg.checkpoint_retention_days)  # startup retention sweep
 
     agent = build_research_agent(cfg, run_dir, multi_agent=use_multi, checkpointer=saver)
-    invoke_config: dict = {"recursion_limit": _RECURSION_LIMIT}
+    recursion_limit = _RECURSION_BY_THOROUGHNESS.get(cfg.thoroughness, _RECURSION_LIMIT)
+    invoke_config: dict = {"recursion_limit": recursion_limit}
     if saver is not None:
         invoke_config["configurable"] = {"thread_id": run_id}
     # Optional Langfuse tracing: one handler at the top traces the whole run tree (lead + subagents +

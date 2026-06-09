@@ -553,9 +553,16 @@ in the UI; it calls `run_research`/`resume_research` and renders events.
   repo). Mirrors the repo's existing "tolerate-unreachable-CDN" stance (cf. the Playwright/crawl4ai chromium
   CDN). Side effect: **dropped `mermaid`** (≈2.7 MB of diagram code for a 5-node stepper) in favour of a
   tiny custom CSS diagram — keeps the committed dist small. Rebuild + recommit dist after frontend changes.
-- **Status:** Phase 1 (event seam + live run stream + diagram + history) first; Phase 2 (prompt/param
-  editors + clarify seam); Phase 3 deferred = a replay/demo mode that re-streams a finished run's events
-  from its run-folder files over the same SSE channel.
+- **Status:** Phases 1 (event seam + live run stream + diagram + history) and 2 (prompt/param editors +
+  clarify seam) **built**; the `tests/` pytest suite (22) + the server image build are **green on-prem**.
+  Two post-build fixes: (a) request Pydantic models must live at MODULE level — with `from __future__ import
+  annotations`, FastAPI couldn't resolve models nested in `create_app()`/`register_config_routes()` and
+  mis-read POST/PUT bodies as query params (→ 422 on start-run / save-prompt / save-params); (b) the
+  technical panel used bare `1fr` grid columns whose `auto` min-track let wide content (long URLs /
+  comparison tables) overflow into the neighbour — switched to `minmax(0,1fr)` + bounded scroll regions.
+  Remaining: a live run-through (esp. confirming multi-agent delegation labels — the deepagents `task` tool's
+  arg keys are inferred in `events.py`). Phase 3 deferred = a replay/demo mode that re-streams a finished
+  run's events from its run-folder files over the same SSE channel.
 
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,

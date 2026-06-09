@@ -50,7 +50,7 @@ export default function RunView({ runId, mode, live, onBack }: Props) {
         {s.error && <span className="error">{s.error}</span>}
       </header>
 
-      <Diagram mode={mode} leanStage={s.leanStage} lastNode={s.lastNode} engaged={s.engaged} />
+      <Diagram mode={mode} leanStage={s.leanStage} running={s.running} engaged={s.engaged} />
 
       <nav className="tabs">
         <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>

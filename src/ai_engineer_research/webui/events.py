@@ -97,6 +97,9 @@ class UIEventHandler(_Base):  # type: ignore[misc, valid-type]
 
     def __init__(self, emit: Callable[[dict], None]) -> None:
         self._emit = emit
+        # run_id (of a `task` tool call) -> subagent name, so on_tool_end can deactivate the right node.
+        # A subagent is "active" (blue) only between its task's start and end; multiple may run at once.
+        self._task_runs: dict[str, str] = {}
 
     # --- tools (web_search / fetch_url / github_*/hf_*/pypi_* / write_file / the `task` delegation) ---
     @_safe
@@ -116,8 +119,11 @@ class UIEventHandler(_Base):  # type: ignore[misc, valid-type]
         if name == "task":
             subagent = str(_first(args, "subagent_type", "subagent", "agent", "name") or "subagent")
             instruction = str(_first(args, "description", "task", "instruction", "input") or input_str or "")
+            run_id = kwargs.get("run_id")
+            if run_id is not None:
+                self._task_runs[str(run_id)] = subagent
             self._emit({"type": "delegate", "subagent": subagent, "instruction": instruction[:600]})
-            # Light up the delegated node in the multi-agent diagram.
+            # Light up the delegated node (active=True now; on_tool_end clears it when the subagent returns).
             self._emit({"type": "stage", "mode": "multi-agent", "node": subagent, "active": True})
             self._emit({"type": "status", "text": f"Delegating to {subagent}…"})
             return
@@ -126,6 +132,12 @@ class UIEventHandler(_Base):  # type: ignore[misc, valid-type]
 
     @_safe
     def on_tool_end(self, output: Any, *, name: str | None = None, **kwargs: Any) -> None:
+        run_id = kwargs.get("run_id")
+        subagent = self._task_runs.pop(str(run_id), None) if run_id is not None else None
+        if subagent:
+            # The subagent's task returned → flip its node from active (blue) back to engaged (green).
+            self._emit({"type": "stage", "mode": "multi-agent", "node": subagent, "active": False})
+            self._emit({"type": "status", "text": f"{subagent} finished"})
         self._emit({"type": "tool", "name": str(name or "tool"), "phase": "end"})
 
     # --- LLM / chat-model calls (model + token usage for the technical feed) ---

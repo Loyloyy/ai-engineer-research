@@ -44,6 +44,26 @@ docker-compose run --rm -e AER_MULTI_AGENT=1 app python -m ai_engineer_research.
 Each run writes `artifacts/<id>-l|-m/` — start at `00_INDEX.md`, then `report.md`. The full walkthrough
 (setup, models, knobs, resume/tracing, output + repository layout) lives in **[`docs/USAGE.md`](docs/USAGE.md)**.
 
+### Web UI (optional)
+
+A browser UI (FastAPI + a React SPA) wraps the same headless contract — **presentation/control only, no
+pipeline logic**. Scope and launch a run, watch it live (a pipeline diagram that lights up + a URL/event/
+token feed + the report streaming in), prompt-engineer any prompt, tune the non-secret knobs, and browse
+past runs. The SPA is **built off-server** (the server's egress blocks npm) and its `frontend/dist/` is
+committed, so the server image is Python-only:
+
+```bash
+# only when frontend/ changes — on any box with npm + internet, then commit frontend/dist:
+cd frontend && npm install && npm run build && cd ..
+
+# on the server (after `./depot up stage-2`):
+cd docker && docker compose --profile web up -d --build web    # serves :8000
+ssh -N -L 8000:localhost:8000 <user>@<server>                  # tunnel, then open http://localhost:8000
+```
+
+One active run at a time (the core uses per-process singletons); a second start returns HTTP 409. Editing
+targets `config/pipeline.yaml` + `config/prompts/` only — never `.env`. See **[`docs/USAGE.md`](docs/USAGE.md) §7**.
+
 ## Documentation
 - **[`docs/USAGE.md`](docs/USAGE.md)** — the full guide: setup · models · running · depth/breadth knobs ·
   prompt overrides · resume · tracing · reading output · repository layout & file reference.
@@ -59,6 +79,8 @@ Each run writes `artifacts/<id>-l|-m/` — start at `00_INDEX.md`, then `report.
 - **Crash-resume** ✅ checkpointed runs + auto-retry + `--resume` / `--list` / `--clean` / `--resume-all`.
 - **Observability** ✅ optional self-hosted Langfuse (`AER_TRACING`, off by default; backend in the sibling
   [`service-depot`](../service-depot) repo).
+- **Web UI** ✅ built — FastAPI control layer + SSE live-event stream + React SPA (`webui/` + `frontend/`).
+  Server image build + the pytest suite are green on-prem; live run-through is the remaining validation step.
 
 ## Data hygiene
 Public-assumed repo. Server IPs, hostnames, served-model ids, NFS/model paths, and keys live ONLY in the

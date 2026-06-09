@@ -30,8 +30,11 @@ via `tracing.py`; backend in the sibling `service-depot` repo; locally validated
 SearXNG + Langfuse now live in the sibling **`service-depot`** repo (shared services); the app reaches them
 over `depot-net` — bring depot up first. **Web UI built** (FastAPI control/presentation layer in `webui/`
 wrapping the contract + an SSE live-event stream; React/Vite SPA in `frontend/`; served by the `web` compose
-service via `Dockerfile.web`, reach over an SSH tunnel; see the "Web UI" entry in `DECISIONS.md`) — local
-logic validated, server end-to-end pending. Only reachability-gated work remains: Context7 MCP if/when
+service via `Dockerfile.web`, reach over an SSH tunnel; see the "Web UI" entry in `DECISIONS.md`). **The SPA
+is built OFF-server (npm is egress-blocked) and `frontend/dist/` is committed**; rebuild + recommit it after
+any `frontend/` change (`cd frontend && npm install && npm run build`). Server image build + the `tests/`
+pytest suite are green on-prem; live run-through (esp. multi-agent delegation labels) is the remaining
+validation step. Only reachability-gated work remains besides that: Context7 MCP if/when
 `context7.com` becomes reachable. See `DECISIONS.md` for the full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md`
 for the Stage 2→3 handoff.
 

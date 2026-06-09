@@ -20,8 +20,8 @@ export interface RunState {
   connected: boolean;
   status: string;
   leanStage: string;
-  lastNode: string; // most recently activated node (lean or multi)
-  engaged: string[]; // multi-agent nodes that have been delegated to
+  running: string[]; // multi-agent subagents currently executing (blue) — between task start & end
+  engaged: string[]; // multi-agent subagents that have been delegated to at some point (green once done)
   delegations: DelegateEvent[];
   log: LogEntry[];
   urls: UrlEvent[];
@@ -38,7 +38,7 @@ const EMPTY: RunState = {
   connected: false,
   status: "",
   leanStage: "scope",
-  lastNode: "",
+  running: [],
   engaged: [],
   delegations: [],
   log: [],
@@ -85,9 +85,18 @@ export function useEventStream(runId: string | null): RunState {
 
     on("stage", (d) =>
       setState((s) => {
-        if (d.mode === "lean") return { ...s, leanStage: d.node, lastNode: d.node };
-        const engaged = s.engaged.includes(d.node) ? s.engaged : [...s.engaged, d.node];
-        return { ...s, engaged, lastNode: d.node };
+        if (d.mode === "lean") return { ...s, leanStage: d.node };
+        // "lead" highlight is derived from whether any subagent is running (see Diagram), so skip it here.
+        if (d.node === "lead") return s;
+        const running = new Set(s.running);
+        const engaged = new Set(s.engaged);
+        if (d.active) {
+          running.add(d.node);
+          engaged.add(d.node);
+        } else {
+          running.delete(d.node);
+        }
+        return { ...s, running: [...running], engaged: [...engaged] };
       })
     );
 

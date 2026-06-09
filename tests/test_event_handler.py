@@ -45,6 +45,20 @@ def test_task_emits_delegate_and_stage():
     assert stage["mode"] == "multi-agent" and stage["node"] == "code-scout" and stage["active"]
 
 
+def test_task_lifecycle_activates_then_deactivates_by_run_id():
+    events, h = _collect()
+    # Two subagents delegated (distinct run_ids), then they finish in a different order.
+    h.on_tool_start({"name": "task"}, "", inputs={"subagent_type": "code-scout"}, run_id="r1")
+    h.on_tool_start({"name": "task"}, "", inputs={"subagent_type": "landscape"}, run_id="r2")
+    stages = [e for e in events if e["type"] == "stage"]
+    assert {("code-scout", True), ("landscape", True)} <= {(e["node"], e["active"]) for e in stages}
+
+    events.clear()
+    h.on_tool_end("done", run_id="r1")  # code-scout returns → must deactivate code-scout specifically
+    off = next(e for e in events if e["type"] == "stage")
+    assert off["node"] == "code-scout" and off["active"] is False
+
+
 def test_llm_end_accumulates_tokens():
     events, h = _collect()
 

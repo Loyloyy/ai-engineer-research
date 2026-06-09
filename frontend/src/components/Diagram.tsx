@@ -8,8 +8,8 @@ const SUBAGENTS = ["code-scout", "landscape", "maturity", "focused-investigator"
 interface Props {
   mode: "lean" | "multi-agent";
   leanStage: string;
-  lastNode: string;
-  engaged: string[];
+  running: string[]; // subagents currently executing → blue
+  engaged: string[]; // subagents that have run → green
 }
 
 function Node({ label, state }: { label: string; state: "active" | "done" | "engaged" | "idle" }) {
@@ -31,8 +31,14 @@ export default function Diagram(p: Props) {
     );
   }
 
-  const nodeState = (n: string) =>
-    p.lastNode === n ? "active" : p.engaged.includes(n) || n === "lead" ? "engaged" : "idle";
+  const nodeState = (n: string) => {
+    // Lead is blue while it's orchestrating (no subagent running — i.e. scoping/reconciling/writing),
+    // green while it's waiting on delegated subagents.
+    if (n === "lead") return p.running.length ? "engaged" : "active";
+    if (p.running.includes(n)) return "active"; // currently executing → blue
+    if (p.engaged.includes(n)) return "engaged"; // has run → green
+    return "idle";
+  };
 
   return (
     <div className="diagram multi">

@@ -139,12 +139,14 @@ Each run writes a timestamped folder `artifacts/<id>/`. The id ends in **`-l`** 
 ```
 00_INDEX.md     (reading guide — files in pipeline order, generated per run)
 report.md · comparison.md · code/** · scope.md · reflection.md · notes/** · coverage.json · vNN.json
-run_meta.json · ledger.json     (resume bookkeeping)
+run_meta.json · ledger.json · evidence.json     (resume/enrichment bookkeeping)
 ```
 
 `00_INDEX.md` lists exactly the files that run produced, in order, with one-line descriptions (start
-there). `vNN.json` is the structured **`DeepResearchArtifact`** (the Stage 2→3 contract); `coverage.json` records
-grounding telemetry (fetched vs blocked) + wall-clock. Programmatic entry: `run_research(...)` in
+there). `vNN.json` is the structured **`DeepResearchArtifact`** (the Stage 2→3 contract) — its
+`reference_repos` are enriched with real GitHub signals (stars / last-commit / archived / code-gathered /
+reproducibility), copied deterministically from `evidence.json`, so Stage 3 can rank which repo to build
+from. `coverage.json` records grounding telemetry (fetched vs blocked) + wall-clock. Programmatic entry: `run_research(...)` in
 `ai_engineer_research.core`. What every folder/file means (incl. per-mode): **[`docs/REPO_GUIDE.md`](docs/REPO_GUIDE.md)**.
 How it all fits together: see **`DEV_NOTES.md`** (learnings) and **`DECISIONS.md`** (architecture log).
 

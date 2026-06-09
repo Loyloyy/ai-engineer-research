@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
@@ -46,14 +47,44 @@ _SYSTEM = """You extract a structured research artifact from a FINISHED research
 - If a section has no support, return an empty list. Do not fabricate repos, licenses, architectures, or steps."""
 
 
-def sources_from_urls(urls: list[str]) -> list[Source]:
-    """Build the Source list (stable src-NNN ids) from the URLs actually fetched during the run."""
+# Hosts that only ever serve raw code/archives (code-scout fetches files from these). Everything else —
+# incl. HF/PyPI/docs pages — is a fetched web page, so origin="web".
+_CODE_HOSTS = (
+    "raw.githubusercontent.com",
+    "codeload.github.com",
+    "objects.githubusercontent.com",
+    "gist.githubusercontent.com",
+)
+
+
+def _origin_for(url: str) -> str:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return "web"
+    return "code" if host in _CODE_HOSTS else "web"
+
+
+def sources_from_urls(urls: list[str], fetched_at: dict[str, str] | None = None) -> list[Source]:
+    """Build the Source list (stable src-NNN ids) from the URLs actually fetched during the run.
+
+    fetched_at: optional url -> ISO timestamp map (from the run ledger) → Source.fetched_at provenance.
+    origin is derived host-based (raw-code hosts → "code", else "web").
+    """
+    fetched_at = fetched_at or {}
     seen: set[str] = set()
     out: list[Source] = []
     for u in urls:
         if u and u not in seen:
             seen.add(u)
-            out.append(Source(id=f"src-{len(out) + 1:03d}", url=u, origin="web"))
+            out.append(
+                Source(
+                    id=f"src-{len(out) + 1:03d}",
+                    url=u,
+                    origin=_origin_for(u),
+                    fetched_at=fetched_at.get(u),
+                )
+            )
     return out
 
 

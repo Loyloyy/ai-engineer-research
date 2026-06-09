@@ -36,6 +36,7 @@ and — crucially — **what each file in a research run folder means, and in wh
 | `seed.py` | Stage-1 wiki page → research brief (hypotheses, sources, 1-hop links). Wiki is READ-ONLY. |
 | `domains.py` | Preferred / reachable source-domain policy (the `[✓]`/`[✗]` tagging; env-overridable). |
 | `runlog.py` | Per-run fetch ledger → miss-log + coverage manifest; persisted to `ledger.json` for resume. |
+| `evidence.py` | Per-run structured-evidence side-store (mirrors `runlog.py`): captures GitHub/HF/PyPI JSON the tools would otherwise discard → `evidence.json`; used to enrich `reference_repos` deterministically. Internal, not a contract file. |
 | `checkpoint.py` | Crash-resume via LangGraph SqliteSaver (shared `checkpoints.sqlite`; delete-on-success; stale sweep). |
 | `tracing.py` | Optional self-hosted Langfuse tracing (env-gated `AER_TRACING`; backend in `service-depot`). |
 | `manage.py` | List / clean / resume-all unfinished runs (backs the CLI `--list` / `--clean` / `--resume-all`). |
@@ -60,6 +61,7 @@ date. Which files appear depends on the mode:
 | `report.md` | **The main human-readable cited report — read this first.** | both |
 | `coverage.json` | Grounding telemetry: fetched-OK vs blocked/failed, `elapsed_s`, and a `truncated` flag (true = salvaged-partial). | both |
 | `ledger.json` | Fetch-ledger snapshot so coverage/sources survive a cross-process `--resume`. | both |
+| `evidence.json` | Structured GitHub signals captured during the run (stars/last-commit/etc.); enriches `reference_repos`. Internal, survives `--resume`. | multi-agent (when repos are looked up) |
 | `vNN.json` | The structured **`DeepResearchArtifact`** — the machine-readable Stage 2→3 contract. `v01`, `v02`… are refinement versions. | both |
 | `notes/**` | Per-subagent working notes (`code-scout.md`, `landscape.md`, `maturity.md`, `focused-<slug>.md`) — each subagent's *full* findings (the lead only gets their concise summary). | **multi-agent only** |
 | `code/**` | Real source files gathered by code-scout, laid out as `code/<owner-repo>/<file>`. | **multi-agent only** |

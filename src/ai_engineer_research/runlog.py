@@ -15,6 +15,7 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -34,11 +35,20 @@ class FetchLedger:
     truncated: bool = False          # True if the run ended early (error/timeout) → partial output
 
     def record(self, url: str, host: str, outcome: str) -> None:
-        self.attempts.append({"url": url, "host": host, "outcome": outcome})
+        ts = datetime.now(timezone.utc).isoformat()
+        self.attempts.append({"url": url, "host": host, "outcome": outcome, "ts": ts})
 
     def fetched_urls(self) -> list[str]:
         """URLs that actually returned content — the verifiable sources for the artifact."""
         return [a["url"] for a in self.attempts if a["outcome"] == OK]
+
+    def fetched_at_map(self) -> dict[str, str]:
+        """url -> ISO timestamp of its latest OK fetch (for Source.fetched_at provenance)."""
+        out: dict[str, str] = {}
+        for a in self.attempts:
+            if a.get("outcome") == OK and a.get("url") and a.get("ts"):
+                out[a["url"]] = a["ts"]  # later attempts overwrite → latest wins
+        return out
 
     def manifest(self) -> dict:
         outcomes = Counter(a["outcome"] for a in self.attempts)

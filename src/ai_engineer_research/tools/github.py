@@ -34,7 +34,7 @@ def _get(path: str, params: dict | None = None):
     import httpx
 
     try:
-        with httpx.Client(timeout=_TIMEOUT, headers=_headers()) as c:
+        with httpx.Client(timeout=_TIMEOUT, headers=_headers(), follow_redirects=True) as c:
             r = c.get(f"{_API}{path}", params=params or {})
         if r.status_code in (403, 429) and "rate limit" in r.text.lower():
             return None, "GitHub rate-limited — set GITHUB_TOKEN in .env for 5000 req/hr."
@@ -48,6 +48,36 @@ def _get(path: str, params: dict | None = None):
 def _split_repo(repo: str) -> tuple[str, str] | None:
     parts = repo.strip().strip("/").split("/")
     return (parts[0], parts[1]) if len(parts) == 2 else None
+
+
+def _record_repo_evidence(data: dict) -> None:
+    """Capture a GitHub repo JSON's maturity signals into the run evidence store (best-effort).
+
+    Keeps the structured facts the prose return value would otherwise discard, so `core._finalize` can
+    enrich ReferenceRepo deterministically. Must NEVER break the tool (same no-raise contract).
+    """
+    try:
+        from ..evidence import canonical_repo, record_evidence
+
+        cid = canonical_repo(data.get("full_name") or data.get("html_url"))
+        if not cid:
+            return
+        record_evidence(
+            "github",
+            cid,
+            data.get("html_url") or "",
+            {
+                "stars": data.get("stargazers_count"),
+                "forks": data.get("forks_count"),
+                "open_issues": data.get("open_issues_count"),
+                "archived": data.get("archived"),
+                "pushed_at": data.get("pushed_at"),
+                "license": (data.get("license") or {}).get("spdx_id"),
+                "created": data.get("created_at"),
+            },
+        )
+    except Exception as e:  # noqa: BLE001 — evidence capture is best-effort
+        logger.debug("evidence capture skipped: %s", e)
 
 
 @tool(parse_docstring=True)
@@ -69,6 +99,7 @@ def github_search_repos(query: str, max_results: int = 5) -> str:
         return f"[github_search_repos: no repos for {query!r}]"
     lines = [f"GitHub repositories for {query!r} (by stars):"]
     for it in items:
+        _record_repo_evidence(it)  # search returns full repo objects → capture signals
         lic = (it.get("license") or {}).get("spdx_id") or "?"
         lines.append(
             f"- {it.get('full_name')}  ★{it.get('stargazers_count')}  {it.get('language') or '?'}  "
@@ -90,6 +121,7 @@ def github_repo(repo: str) -> str:
     data, err = _get(f"/repos/{repo.strip().strip('/')}")
     if data is None:
         return f"[github_repo error for {repo}: {err}]"
+    _record_repo_evidence(data)  # capture structured maturity signals for deterministic enrichment
     lic = (data.get("license") or {}).get("spdx_id") or "?"
     return (
         f"{data.get('full_name')} — {(data.get('description') or '').strip()}\n"

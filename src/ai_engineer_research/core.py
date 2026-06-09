@@ -24,6 +24,7 @@ from .artifact import (
 from .artifact import load as load_artifact
 from .artifact import save as save_artifact
 from .config import RunConfig, load_config
+from .evidence import canonical_repo, current_evidence
 from .runlog import current_ledger
 from .seed import seed_brief
 from .tracing import build_tracer, flush_tracer
@@ -134,7 +135,7 @@ def _finalize(
     """Shared tail for run_research/resume_research: ground sources in the ledger → extract → save."""
     # Ground the artifact in what was actually fetched (verifiable sources) + per-run coverage telemetry.
     ledger = current_ledger()
-    sources = sources_from_urls(ledger.fetched_urls())
+    sources = sources_from_urls(ledger.fetched_urls(), ledger.fetched_at_map())
     model_versions = {
         "roles": {"lead": cfg.lead_role, "extract": cfg.artifact.model},
         "coverage": ledger.manifest(),  # scaffold: grounding boundary travels with the artifact
@@ -173,9 +174,121 @@ def _finalize(
             report_markdown=report_md,
         )
 
+    # Deterministic provenance enrichment (NOT LLM): copy the captured GitHub signals onto each repo,
+    # flag whether we gathered its code, derive a reproducibility tier. Touches only ReferenceRepo
+    # metadata — never evidence_ids — so the §6 citation invariant is structurally safe.
+    _enrich_reference_repos(artifact, run_dir)
+    # Fail loud if enrichment produced something schema-invalid, rather than writing a bad vNN.json.
+    artifact = DeepResearchArtifact.model_validate(artifact.model_dump())
+
     save_artifact(artifact, root=run_dir.parent)  # artifacts/<id>/vNN.json, alongside report.md
     _write_run_index(run_dir, artifact)
     return report_md, artifact
+
+
+_PERMISSIVE_LICENSES = {"MIT", "APACHE-2.0", "BSD-3-CLAUSE", "BSD-2-CLAUSE", "ISC", "MPL-2.0", "0BSD"}
+
+
+def _norm_key(s: str) -> str:
+    """Fold owner/repo separators so 'Owner-Repo', 'Owner_Repo', 'Owner/Repo' compare equal."""
+    return (s or "").lower().replace("_", "-").replace("/", "-").strip("-")
+
+
+def _gathered_code_keys(run_dir) -> set[str]:
+    """Normalized dir keys for repos that actually have files under code/ (tolerant of layout).
+
+    code-scout writes `code/<owner-repo>/...` but the exact dir name is ambiguous (single `owner-repo`
+    dir vs nested `owner/repo`), so we index both immediate and one-level-nested non-empty dirs.
+    """
+    code_root = run_dir / "code"
+    keys: set[str] = set()
+    if not code_root.is_dir():
+        return keys
+    for sub in code_root.iterdir():
+        if not sub.is_dir():
+            continue
+        if any(f.is_file() for f in sub.rglob("*")):
+            keys.add(_norm_key(sub.name))
+        for child in sub.iterdir():  # nested owner/repo layout
+            if child.is_dir() and any(f.is_file() for f in child.rglob("*")):
+                keys.add(_norm_key(f"{sub.name}/{child.name}"))
+    return keys
+
+
+def _code_gathered(cid: str | None, name: str, keys: set[str]) -> bool:
+    """Did this repo produce files under code/? Tolerant match against the gathered-code dir keys."""
+    if not keys:
+        return False
+    cands: set[str] = set()
+    repo_token = None
+    if cid:
+        repo_token = _norm_key(cid.split("/")[-1])
+        cands |= {_norm_key(cid), repo_token}
+    if name:
+        cands |= {_norm_key(name), _norm_key(name.split("/")[-1])}
+    cands.discard("")
+    if cands & keys:
+        return True
+    # looser: a dir whose trailing segment is the repo name (e.g. 'langchain-ai-deepagents' vs 'deepagents')
+    return bool(repo_token) and any(k == repo_token or k.endswith("-" + repo_token) for k in keys)
+
+
+def _reproducibility(rec: dict | None) -> str | None:
+    """Tier from PURE-JSON signals only (archived/recency/stars/license). None = no evidence match."""
+    if not rec:
+        return None
+    sig = rec.get("signals") or {}
+    if sig.get("archived"):
+        return "LOW"
+    score = 0
+    pushed = sig.get("pushed_at")
+    if pushed:
+        try:
+            days = (datetime.now(timezone.utc) - datetime.fromisoformat(pushed.replace("Z", "+00:00"))).days
+            if days <= 365:
+                score += 1
+            if days <= 90:
+                score += 1
+        except ValueError:
+            pass
+    if (sig.get("stars") or 0) >= 1000:
+        score += 1
+    if (sig.get("license") or "").upper() in _PERMISSIVE_LICENSES:
+        score += 1
+    return "HIGH" if score >= 3 else "MED" if score >= 1 else "LOW"
+
+
+def _enrich_reference_repos(artifact: DeepResearchArtifact, run_dir) -> None:
+    """Copy captured GitHub signals onto each ReferenceRepo + derive code_gathered/reproducibility.
+
+    Deterministic, best-effort: unmatched repos keep their LLM-extracted fields and are logged as a
+    coverage signal (a miss is information, not an error). No network calls.
+    """
+    store = current_evidence()
+    code_keys = _gathered_code_keys(run_dir)
+    unmatched: list[str] = []
+    for repo in artifact.reference_repos:
+        cid = canonical_repo(repo.url) or canonical_repo(repo.name)
+        rec = store.get(cid) if cid else None
+        if rec:
+            sig = rec.get("signals") or {}
+            if sig.get("stars") is not None:
+                repo.stars = sig["stars"]
+            if sig.get("pushed_at"):
+                repo.last_commit = sig["pushed_at"][:10]
+            if sig.get("archived") is not None:
+                repo.archived = sig["archived"]
+            if sig.get("license") and not repo.license:
+                repo.license = sig["license"]
+        else:
+            unmatched.append(repo.url or repo.name)
+        repo.code_gathered = _code_gathered(cid, repo.name, code_keys)
+        repo.reproducibility = _reproducibility(rec)
+    if unmatched:
+        logger.info(
+            "reference_repos with no structured evidence match (%d/%d): %s",
+            len(unmatched), len(artifact.reference_repos), ", ".join(unmatched[:10]),
+        )
 
 
 def _write_run_index(run_dir, artifact: DeepResearchArtifact) -> None:
@@ -221,8 +334,15 @@ def _write_run_index(run_dir, artifact: DeepResearchArtifact) -> None:
 
 
 def _assemble_brief(topic: str, brief: str, seed_pages: list[str] | None) -> str:
-    """Combine the caller-supplied brief with the Stage-1 wiki seed (if any)."""
-    parts = [brief.strip()] if brief.strip() else []
+    """Combine the caller-supplied brief with the Stage-1 wiki seed (if any).
+
+    Leads with today's date so the model grounds "as of" phrasing and dated claims in the report on
+    the real run date instead of guessing one (otherwise the report header date is hallucinated).
+    """
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    parts = [f"Today's date is {today}. Date any time-sensitive claims relative to this."]
+    if brief.strip():
+        parts.append(brief.strip())
     if seed_pages:
         seed_text, _ = seed_brief(seed_pages, topic=topic)
         if seed_text:

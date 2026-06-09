@@ -237,7 +237,13 @@ coverage.json   ← grounding telemetry: fetched vs blocked + wall-clock elapsed
 vNN.json        ← the structured DeepResearchArtifact (the Stage 2→3 contract)
 run_meta.json   ← topic/brief/mode, written before the first call → enables resume after a hard kill
 ledger.json     ← fetch-ledger snapshot so coverage/sources survive a cross-process --resume
+evidence.json   ← structured GitHub signals captured during the run (enriches reference_repos); internal, resume-restored
 ```
+
+Each cited source now carries `fetched_at` (when it was fetched) and an `origin` (`web`/`code`). Each
+`reference_repos` entry is **enriched deterministically** (copied from real GitHub data, not LLM-guessed)
+with `stars` / `last_commit` / `archived` / `code_gathered` / a `reproducibility` tier — so the downstream
+Stage 3 can rank which repo to build from. `evidence.json` is the internal capture behind that.
 
 (The shared checkpoint DB lives one level up at `artifacts/checkpoints.sqlite`, not inside the run folder.)
 

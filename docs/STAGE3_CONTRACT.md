@@ -24,7 +24,7 @@ artifacts/<run_id>/
 ├── reflection.md     # gaps, confidence tiers, confirm/contradict verdict on seed opinions
 ├── notes/            # per-subagent raw findings (code-scout.md / landscape.md / maturity.md / focused-*.md)
 ├── coverage.json     # fetch ledger summary (what was reachable vs blocked)
-└── run_meta.json · ledger.json   # resume bookkeeping (not part of the Stage-3 contract)
+└── run_meta.json · ledger.json · evidence.json   # resume/enrichment bookkeeping (not part of the contract)
 ```
 
 `<run_id>` = `dra-<YYYYMMDD>-<HHMMSS>-<rand6>` (UTC, sortable), optionally suffixed `-l` (lean) or `-m`
@@ -66,11 +66,15 @@ reliability. Every `Finding.evidence_ids` entry is validated to resolve to a rea
 
 ### Nested models
 
-- **Source**: `id` (`src-NNN`), `url`, `title?`, `origin` (`"web"`|`"vault"`|`"code"`).
+- **Source**: `id` (`src-NNN`), `url`, `title?`, `origin` (`"web"`|`"code"`; host-based — raw-code hosts →
+  `code`), `fetched_at?` (ISO timestamp the source was fetched → staleness signal for Stage-3 re-fetch).
 - **Finding**: `claim`, `evidence_ids: [Source.id]` (validated to resolve), `confidence` (0..1).
 - **TechStackItem**: `layer`, `choice`, `rationale`, `alternatives: [str]`.
 - **Architecture**: `name`, `summary`, `components: [str]`, `diagram_hint?`.
-- **ReferenceRepo**: `name`, `url`, `license?`, `why_relevant`.
+- **ReferenceRepo**: `name`, `url`, `license?`, `why_relevant`, plus **deterministic enrichment** (copied
+  from real GitHub API data, not LLM-guessed): `stars?`, `last_commit?` (ISO date), `archived?`,
+  `code_gathered` (bool — did this run pull the repo's files into `code/**`), `reproducibility?`
+  (`HIGH`|`MED`|`LOW`; `None` = unknown). **Use these to rank which repo to template from.**
 - **ImplementationStep**: `order` (int), `action`, `tools: [str]`, `est_effort?` (`S`|`M`|`L`/hours).
 
 ### Example (abridged)
@@ -81,10 +85,13 @@ reliability. Every `Finding.evidence_ids` entry is validated to resolve to a rea
   "model_versions": {"roles": {"lead": "strategic", "extract": "smart"},
                      "coverage": {"fetched_ok": 13, "blocked_or_failed": 10, "blocked_hosts": ["medium.com"]}},
   "topic": "LangChain deepagents …", "brief": "…", "seed_pages": ["DeepAgents"],
-  "sources": [{"id": "src-016", "url": "https://github.com/langchain-ai/deepagents/issues/573", "origin": "web"}],
+  "sources": [{"id": "src-016", "url": "https://github.com/langchain-ai/deepagents/issues/573",
+               "origin": "web", "fetched_at": "2026-06-03T15:40:11+00:00"}],
   "findings": [{"claim": "Subagents lack checkpoint persistence …", "evidence_ids": ["src-016"], "confidence": 0.95}],
   "reference_repos": [{"name": "langchain-ai/deepagents", "url": "https://github.com/langchain-ai/deepagents",
-                       "license": "MIT", "why_relevant": "the reference implementation"}],
+                       "license": "MIT", "why_relevant": "the reference implementation",
+                       "stars": 4200, "last_commit": "2026-05-28", "archived": false,
+                       "code_gathered": true, "reproducibility": "HIGH"}],
   "tech_stack": [{"layer": "orchestration", "choice": "LangGraph", "rationale": "…", "alternatives": ["CrewAI"]}],
   "implementation_steps": [{"order": 1, "action": "scaffold create_deep_agent(...)", "tools": ["deepagents"], "est_effort": "S"}]
 }

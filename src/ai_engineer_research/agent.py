@@ -24,6 +24,7 @@ from .checkpoint import (
 )
 from .config import RunConfig, load_config
 from .models import build_chat_model
+from .evidence import configure_evidence, current_evidence, load_evidence, save_evidence
 from .runlog import configure_ledger, current_ledger, load_ledger, save_ledger
 from .tracing import build_tracer, flush_tracer, trace_metadata
 from .prompts import load_prompt
@@ -224,8 +225,12 @@ def run_gather(
     run_id = run_id or new_artifact_id(use_multi)
     run_dir = _run_dir(run_id)
     ledger_path = run_dir / "ledger.json"
-    # Ledger: fresh for a new run; restored from disk on resume so coverage/sources span both segments.
+    evidence_path = run_dir / "evidence.json"
+    # Ledger + evidence store: fresh for a new run; restored from disk on resume so coverage/sources AND
+    # the structured GitHub signals (used to enrich reference_repos) span both segments. Without restoring
+    # evidence, a cross-process --resume would start empty and silently emit unenriched repos.
     ledger = load_ledger(ledger_path) if resume else configure_ledger()
+    load_evidence(evidence_path) if resume else configure_evidence()
     if not resume:
         # Persist the inputs needed to resume BEFORE any LLM call, so even a hard kill (Ctrl-C / docker
         # stop — which skips the salvage path) leaves enough on disk for `--resume` to recover. `multi_agent`
@@ -316,6 +321,7 @@ def run_gather(
             pass
 
     save_ledger(ledger, ledger_path)  # snapshot so a later cross-process --resume has the fetch history
+    save_evidence(current_evidence(), evidence_path)  # same: structured signals survive --resume
     coverage = ledger.manifest()  # now includes elapsed_s + truncated
     try:
         (run_dir / "coverage.json").write_text(json.dumps(coverage, indent=2))

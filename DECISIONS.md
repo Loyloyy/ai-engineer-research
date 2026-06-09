@@ -460,6 +460,39 @@ code), and the injected knobs (thoroughness, fan-out budget, code-count) — so 
 drop grounding or break the artifact. Subagent prompts were refactored into `_BODIES` + `_requirements()`;
 lead prompts get a code-appended `_LEAD_RULES` tail. Descriptions (dispatch hints) stay non-overridable.
 
+## Evidence/provenance side-channel (P1+P2 reframed; Feynman-comparison handover)
+Two chats (this one + a research/comparison chat) compared the repo against Feynman and converged on a
+small, additive Stage-2→3 improvement, scoped deliberately.
+
+**Root cause:** the GitHub/HF/PyPI tools fetch structured signals (stars/last-commit/archived/license) via
+`r.json()`, render them to PROSE for the agent, and discard the structure (`tools/*.py` persist nothing).
+The artifact's structured fields are then re-derived by the extraction LLM from that prose → lossy.
+
+**Decision — capture the structure, enrich deterministically:**
+- **NEW `evidence.py`** — a per-run side-store mirroring `runlog.py` (singleton + `configure/current/record`
+  + `save/load` to `run_dir/evidence.json`, **restored on `--resume`** — same resume contract as the ledger;
+  without it a cross-process resume starts empty and silently emits unenriched repos). Record shape
+  `{kind,id,url,signals,gathered_at}`, generic across kinds; **github only** populated now (YAGNI).
+- **`tools/github.py`** records repo JSON signals after `r.json()` (best-effort, never breaks the tool).
+- **`core._finalize`** enriches each `ReferenceRepo` DETERMINISTICALLY (no LLM): join `canonical_repo(url)`
+  → evidence; copy `stars/last_commit/archived/license`; `code_gathered` from the `code/` dir (tolerant of
+  layout); `reproducibility` HIGH/MED/LOW from **pure-JSON signals only** (`archived`/recency/stars/license),
+  `None` when unmatched. Unmatched repos keep their LLM fields and are logged (coverage signal, not a crash).
+  Enrichment touches only `ReferenceRepo` metadata + `Source.origin/fetched_at` — never `evidence_ids` — so
+  the §6 citation invariant is structurally safe; the artifact is re-validated before save (fail loud).
+- **P2 reframed:** `Source.fetched_at` (provenance/staleness) + correct host-based `origin`
+  (`raw.githubusercontent.com`→`code`, else `web`). NOT `fetch_status` (every Source is OK-by-construction →
+  uniformly "ok") and NO live re-check at emit (restricted egress would false-flag live sources).
+
+**Scoping (agreed):** this is a **provenance/metadata side-channel, strongest for `reference_repos`** — it
+improves grounding, NOT findings/tech_stack synthesis (those stay LLM/prose-derived). `evidence.json` is
+INTERNAL, not a contract file; the schema fields are the Stage-3 interface.
+
+**Dispositions:** P3 (Reviewer agent) **rejected** — single-model (`AER_DEFAULT_ROLE`→strategic) means it
+grades its own homework; becomes a future reflect-prompt + confidence-from-reflection improvement (per-area→
+per-claim threading, non-trivial). P4 (runnable `implementation_steps` hints) **deferred** until Stage 3
+exists to say what it needs. P5 (machine-readable comparison) **optional**, later.
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

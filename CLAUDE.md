@@ -48,6 +48,9 @@ for the Stage 2→3 handoff.
 - `domains.py` — preferred-source-domain policy (env-overridable).
 - `runlog.py` — per-run fetch ledger → miss-log + coverage manifest (+ elapsed/truncated); persisted to
   `ledger.json` for resume.
+- `evidence.py` — per-run structured-evidence side-store (mirrors `runlog.py`): captures GitHub/HF/PyPI JSON
+  the tools discard → `evidence.json` (resume-restored); `core._finalize` enriches `reference_repos`
+  deterministically (stars/last_commit/archived/code_gathered/reproducibility). Internal, not a contract file.
 - `checkpoint.py` — crash-resume via LangGraph SqliteSaver (shared `artifacts/checkpoints.sqlite`;
   delete-on-success; startup sweep of stale-truncated + orphaned threads). `core.resume_research`.
 - `tracing.py` — optional self-hosted Langfuse tracing (env-gated `AER_TRACING`, lazy/tolerated-absent like

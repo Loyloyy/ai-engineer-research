@@ -14,6 +14,7 @@ class Source(BaseModel):
     url: str
     title: str | None = None
     origin: str = "web"  # "web" | "vault" | "code"
+    fetched_at: str | None = None  # ISO timestamp of the fetch that produced this source (None = unknown)
 
 
 class Finding(BaseModel):
@@ -41,6 +42,12 @@ class ReferenceRepo(BaseModel):
     url: str
     license: str | None = None
     why_relevant: str
+    # Deterministic enrichment (core._finalize, from the evidence side-store + code/ dir) — NOT LLM-filled.
+    stars: int | None = None
+    last_commit: str | None = None  # ISO date (YYYY-MM-DD) of last push
+    archived: bool | None = None
+    code_gathered: bool = False  # did this run gather real files under code/<owner-repo>/
+    reproducibility: str | None = None  # "HIGH"|"MED"|"LOW"; None = unknown (no structured evidence)
 
 
 class ImplementationStep(BaseModel):

@@ -28,43 +28,29 @@ built & validated** (checkpointed runs + auto-retry + `--resume`/`--list`/`--cle
 "Run checkpointing + resume" entry in `DECISIONS.md`). **Observability built** (optional self-hosted Langfuse
 via `tracing.py`; backend in the sibling `service-depot` repo; locally validated, server trace-check pending).
 SearXNG + Langfuse now live in the sibling **`service-depot`** repo (shared services); the app reaches them
-over `depot-net` — bring depot up first. Only reachability-gated work remains: Context7 MCP if/when
+over `depot-net` — bring depot up first. **Web UI built** (FastAPI control/presentation layer in `webui/`
+wrapping the contract + an SSE live-event stream; React/Vite SPA in `frontend/`; served by the `web` compose
+service via `Dockerfile.web`, reach over an SSH tunnel; see the "Web UI" entry in `DECISIONS.md`) — local
+logic validated, server end-to-end pending. Only reachability-gated work remains: Context7 MCP if/when
 `context7.com` becomes reachable. See `DECISIONS.md` for the full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md`
 for the Stage 2→3 handoff.
 
 ## Layout (`src/ai_engineer_research/`)
-- `core.py` — `run_research(...)`, the stable contract (assemble brief → loop → extract → save).
-- `agent.py` — the lead research loop: lean M1 (`SYSTEM_PROMPT`) + multi-agent M2 (`M2_LEAD_PROMPT`),
-  `build_research_agent(multi_agent=)`, `run_gather(...)` (timing + salvage-on-error).
-- `subagents.py` — M2 subagent roster built per-run via `build_subagents(...)` (code-scout / landscape /
-  maturity + focused-investigator); injects the thoroughness + code-breadth knobs into prompts.
-- `clarify.py` — pre-research clarifying questions (`clarify_questions`/`fold_answers`, env `AER_CLARIFY`);
-  reusable by CLI + a future UI, so the headless `run_research` contract stays untouched.
-- `prompts.py` — optional prompt-body overrides: `config/prompts/<name>.md` replaces a lead/subagent body
-  (`AER_PROMPTS_DIR` to relocate); code still appends grounding/outputs/knobs so overrides can't break a run.
-- `models.py` — `build_chat_model(role)` → `ChatOpenAI` (role→model factory; env timeout/retries).
-- `config.py` — `RunConfig` + `load_config` (`.env` + `config/pipeline.yaml`).
-- `seed.py` — Stage-1 wiki page → research brief (Opinions=hypotheses, Sources, 1-hop links).
-- `domains.py` — preferred-source-domain policy (env-overridable).
-- `runlog.py` — per-run fetch ledger → miss-log + coverage manifest (+ elapsed/truncated); persisted to
-  `ledger.json` for resume.
-- `evidence.py` — per-run structured-evidence side-store (mirrors `runlog.py`): captures GitHub/HF/PyPI JSON
-  the tools discard → `evidence.json` (resume-restored); `core._finalize` enriches `reference_repos`
-  deterministically (stars/last_commit/archived/code_gathered/reproducibility). Internal, not a contract file.
-- `checkpoint.py` — crash-resume via LangGraph SqliteSaver (shared `artifacts/checkpoints.sqlite`;
-  delete-on-success; startup sweep of stale-truncated + orphaned threads). `core.resume_research`.
-- `tracing.py` — optional self-hosted Langfuse tracing (env-gated `AER_TRACING`, lazy/tolerated-absent like
-  `checkpoint.py`). One CallbackHandler at `agent.invoke` traces the whole tree; backend = `service-depot`.
-- `manage.py` — list/clean/resume-all unfinished (checkpointed) runs; backs CLI `--list` / `--clean`
-  `[--with-folders]` / `--resume-all` / `--resume <id>` / bare `--resume` (interactive numbered picker).
-  Resume honors the run's original `multi_agent` mode (persisted in `run_meta.json`).
-- `tools/` — `search.py` (SearXNG), `scrape.py` (browserless `fetch_url`), `github.py`/`hf.py`/`pypi.py`
-  (M2 structured APIs). `WEB_TOOLS` (lean M1) vs `STRUCTURED_TOOLS`.
-- `artifact/` — `schema.py` (DeepResearchArtifact), `store.py`, `validate.py`, `extract.py`.
-- `cache/store.py` — URL-keyed content cache (shared across subagents). `cli.py` — CLI entrypoint.
-- `scripts/` — `m0_toolcall_probe.py`, `reachability_probe.py`. `docker/` — Dockerfile + app compose (**no
-  litellm**; the app joins the external `depot-net`). Shared services (searxng + langfuse) live in the
-  sibling `service-depot` repo — bring them up first (`./depot up stage-2`).
+Entry points: `core.py` = `run_research(...)`, the stable contract (assemble brief → loop → extract → save)
++ the deterministic `reference_repos` enrichment in `_finalize`; `agent.py` = the lead loop
+(`build_research_agent` / `run_gather`, lean `SYSTEM_PROMPT` + multi `M2_LEAD_PROMPT`); `cli.py` = CLI.
+Config + models: `config.py` (`RunConfig`/`load_config`), `models.py` (`build_chat_model(role)`). Prompts
+are overridable via `config/prompts/` (`prompts.py`; now incl. `clarify`); per-run telemetry in `runlog.py`
++ `evidence.py`. The Stage-3 contract is `artifact/schema.py` (`DeepResearchArtifact`) +
+`extract`/`store`/`validate`. **UI** (presentation/control ONLY, rule #3): `webui/` (`app.py` FastAPI +
+`events.py` callback→event handler injected via `run_research(event_callbacks=…)` + `runner.py` single-slot
+RunManager + `history.py` + `config_api.py`) and `frontend/` (React SPA). `run_research` gained optional
+`event_callbacks` + `run_id` params (back-compat, default-off).
+
+**Full module-by-module map + run-folder file reference → `docs/USAGE.md` (§11 Repository layout, §8 Reading
+the output).** Ops: `docker/` (no litellm;
+joins external `depot-net`); searxng + langfuse live in the sibling `service-depot` repo — bring them up
+first (`./depot up stage-2`).
 
 ## Key env knobs (all in gitignored `.env`)
 - `<ROLE>_MODEL/_API_BASE/_API_KEY` (strategic/smart/fast/judge) · `LEAD_ROLE` · `SEARX_URL`

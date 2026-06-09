@@ -43,6 +43,32 @@ services:
       # network. Bring them up first (`./depot up stage-2`); SEARX_URL / LANGFUSE_HOST resolve by name.
       - depot-net
 
+  # ---- The web UI (long-running FastAPI + built React SPA). Reach via SSH tunnel like Langfuse. ----
+  # `docker compose --profile web up --build web` ; then tunnel localhost:8000 -> server:8000.
+  # PRESENTATION/CONTROL ONLY — it wraps run_research over HTTP + streams live events (rule #3).
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    image: ai-engineer-research-web
+    container_name: aer-web
+    profiles: ["web"]
+    env_file:
+      - ../.env
+    environment:
+      - SEARX_URL=http://searxng:8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Edit pipeline.yaml + prompt overrides live (the UI writes config/prompts/ + pipeline.yaml).
+      - ../config:/app/config
+      - ../src:/app/src                 # code changes need no image rebuild (SPA dist stays baked)
+      - ../artifacts:/app/artifacts     # same run folders the CLI writes — history reads these
+    networks:
+      - depot-net
+
 networks:
   depot-net:
     external: true

@@ -8,6 +8,8 @@ the next run. With no files here, the app uses the defaults baked into the code.
 An override replaces only the **body** (persona + method) of a prompt. The code still appends the
 **non-negotiable parts** so a custom prompt can't break a run:
 
+- the **mission** (every run feeds a Stage-3 PoC builder → produce build-ready material),
+- the **citation format** (numbered `[n]` inline + a linked `## Sources` list),
 - grounding rules (cite only fetched / structured-API sources; mark snippets `(unverified)`),
 - required file outputs (`report.md`, `comparison.md`, `notes/<agent>.md`, `code/**`),
 - the injected knobs — thoroughness directive, fan-out budget, code-count (`AER_CODE_*`).
@@ -24,10 +26,12 @@ So write your override as the agent's **role + approach**; leave the rules/outpu
 | `landscape.md` | the landscape subagent |
 | `maturity.md` | the maturity subagent |
 | `focused-investigator.md` | the ad-hoc focused-investigator subagent |
+| `clarify.md` | the pre-research clarifying-questions prompt (`clarify.py`); keep the `{n}` placeholder (max question count) |
 
 Relocate this directory with `AER_PROMPTS_DIR=/some/other/dir` in `.env`. An empty or unreadable file is
 ignored (falls back to the default, with a logged warning). Defaults live in `src/ai_engineer_research/`
-(`agent.py` for the leads, `subagents.py` for the subagents).
+(`agent.py` for the leads, `subagents.py` for the subagents, `clarify.py` for the clarify prompt). All of
+these are also editable from the web UI's prompt editor, which shows the read-only code-kept parts inline.
 
 > These override files are **not secret** — keep them tracked in git so prompt changes are reviewable.
 > (Secrets/host specifics still belong only in `.env`.)

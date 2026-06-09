@@ -40,6 +40,8 @@ def run_research(
     parent_id: str | None = None,
     config: RunConfig | None = None,
     interactive: bool = False,
+    event_callbacks: list | None = None,
+    run_id: str | None = None,
 ) -> tuple[str, DeepResearchArtifact]:
     cfg = config or load_config()
     full_brief = _assemble_brief(topic, brief, seed_pages)
@@ -56,14 +58,20 @@ def run_research(
                 full_brief + "\n\nBuild on these prior findings; deepen/extend, do NOT repeat:\n" + prior
             ).strip()
     else:
-        artifact_id, version, lineage_parent = new_artifact_id(cfg.multi_agent), 1, None
+        # A caller (e.g. the UI) may pre-supply the run_id so it can subscribe to the live stream before
+        # this long run returns; otherwise mint a fresh one. parent_id (refinement) still wins above.
+        artifact_id, version, lineage_parent = run_id or new_artifact_id(cfg.multi_agent), 1, None
 
     # Run the agentic loop (writes report.md / scope.md / reflection.md / coverage.json into the run dir).
-    report_md, run_dir, _ = run_gather(topic, full_brief, config=cfg, run_id=artifact_id, interactive=interactive)
+    report_md, run_dir, _ = run_gather(
+        topic, full_brief, config=cfg, run_id=artifact_id, interactive=interactive,
+        event_callbacks=event_callbacks,
+    )
 
     return _finalize(
         cfg, topic, full_brief, report_md, run_dir,
         artifact_id=artifact_id, version=version, lineage_parent=lineage_parent, seed_pages=seed_pages or [],
+        event_callbacks=event_callbacks,
     )
 
 
@@ -71,6 +79,7 @@ def resume_research(
     run_id: str,
     *,
     config: RunConfig | None = None,
+    event_callbacks: list | None = None,
 ) -> tuple[str, DeepResearchArtifact]:
     """Resume a prior TRUNCATED run from its checkpoint and finalize the artifact.
 
@@ -84,11 +93,13 @@ def resume_research(
     # mismatch the checkpointed graph. None (old run_meta without the field) → fall back to cfg.
     multi_agent = _meta_field(run_id, "multi_agent")
     report_md, run_dir, _ = run_gather(
-        topic, brief, config=cfg, run_id=run_id, resume=True, multi_agent=multi_agent
+        topic, brief, config=cfg, run_id=run_id, resume=True, multi_agent=multi_agent,
+        event_callbacks=event_callbacks,
     )
     return _finalize(
         cfg, topic, brief, report_md, run_dir,
         artifact_id=run_id, version=version, lineage_parent=lineage_parent, seed_pages=seed_pages,
+        event_callbacks=event_callbacks,
     )
 
 
@@ -131,6 +142,7 @@ def _finalize(
     version: int,
     lineage_parent: str | None,
     seed_pages: list[str],
+    event_callbacks: list | None = None,
 ) -> tuple[str, DeepResearchArtifact]:
     """Shared tail for run_research/resume_research: ground sources in the ledger → extract → save."""
     # Ground the artifact in what was actually fetched (verifiable sources) + per-run coverage telemetry.
@@ -157,6 +169,7 @@ def _finalize(
                 model=cfg.artifact.model,
                 model_versions=model_versions,
                 tracer=tracer,
+                extra_callbacks=event_callbacks,
             )
         finally:
             flush_tracer()

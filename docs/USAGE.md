@@ -220,25 +220,53 @@ tokens; a failed call is an **errored span** (how you localize a failure — vs.
 flags that the run truncated). With `AER_TRACING=0` (default) there's zero behavior change and no
 dependency on the stack.
 
+### The web UI (optional)
+
+A browser UI wraps the same headless contract (it holds **no** pipeline logic — rule #2 above): scope and
+launch a run, watch it live (a pipeline diagram that lights up per stage/subagent + a technical event / URL /
+token feed + the report streaming in), prompt-engineer any prompt, tune the non-secret knobs, and browse
+past runs. It's a long-running FastAPI service + a built React SPA, served on port 8000.
+
+```bash
+# 1. bring up shared services (search + optional tracing), as for any run
+cd ../service-depot && ./depot up stage-2
+
+# 2. build + start the web service (multi-stage image: builds the SPA, then serves it)
+cd ../ai-engineer-research
+docker compose --profile web up --build web        # serves on :8000 inside the server
+
+# 3. from your laptop, tunnel the port (same pattern as Langfuse), then open http://localhost:8000
+ssh -N -L 8000:localhost:8000 <user>@<server>
+```
+
+**One run at a time.** The core uses per-process singletons, so the UI runs a single active research at a
+time — starting a second while one is in flight returns HTTP 409 (the form tells you). The live stream is
+Server-Sent Events; reconnecting re-attaches to the active run (the backlog replays). **Prompt editing**
+writes only the override *body* to `config/prompts/<name>.md` (the code-kept mission / citation / grounding
+/ required-output rules are shown read-only); **param editing** writes the allow-listed knobs in
+`config/pipeline.yaml` — never `.env` (model endpoints/keys stay server-side and out of the UI). Per-run
+**multi-agent** + **thoroughness** toggles on the form apply to that run only. With the `web` profile not
+up, nothing changes — the CLI path is unaffected.
+
 ## 8. Reading the output
 
 Each run writes a timestamped folder `artifacts/<id>/`. The id ends in **`-l`** (lean) or **`-m`**
 (multi-agent), after the timestamp, so a glance tells you the mode while `ls` still sorts by date:
 
-```
-00_INDEX.md     ← reading guide: this run's files in pipeline order, one-line descriptions (start here)
-report.md       ← the main human-readable cited report
-comparison.md   ← alternatives matrix (multi-agent only)
-code/**         ← real source files gathered (multi-agent only)
-scope.md        ← what the agent decided to investigate
-reflection.md   ← confidence tiers + seed-hypothesis verdicts
-notes/**        ← per-subagent working notes (code-scout/landscape/maturity)
-coverage.json   ← grounding telemetry: fetched vs blocked + wall-clock elapsed_s + truncated flag
-vNN.json        ← the structured DeepResearchArtifact (the Stage 2→3 contract)
-run_meta.json   ← topic/brief/mode, written before the first call → enables resume after a hard kill
-ledger.json     ← fetch-ledger snapshot so coverage/sources survive a cross-process --resume
-evidence.json   ← structured GitHub signals captured during the run (enriches reference_repos); internal, resume-restored
-```
+| File / dir | Meaning | Mode |
+|------------|---------|------|
+| `00_INDEX.md` | Reading guide: this run's files in pipeline order, one-line descriptions. Sorts to the top. | both |
+| `run_meta.json` | Run inputs (topic / brief / mode), written **before** the first LLM call → enables resume after a hard kill. | both |
+| `scope.md` | The agent's research question, sub-questions, success criteria, assumptions. | both |
+| `reflection.md` | Gap analysis: which criteria are met, which sub-questions are thin, confirm/contradict verdict on the seed hypotheses. | both |
+| `report.md` | **The main report — read first.** Builder-oriented sections (architecture / tech-stack / reference-repos / implementation-steps / …) with numbered `[n]` citations → a linked `## Sources` list. | both |
+| `coverage.json` | Grounding telemetry: fetched-OK vs blocked/failed, `elapsed_s`, `truncated` flag (true = salvaged-partial). | both |
+| `ledger.json` | Fetch-ledger snapshot so coverage/sources survive a cross-process `--resume`. | both |
+| `evidence.json` | Structured GitHub signals captured during the run; enriches `reference_repos`. Internal, survives `--resume`. | multi-agent |
+| `vNN.json` | The structured **`DeepResearchArtifact`** — the machine-readable Stage 2→3 contract. `v01`, `v02`… = refinement versions. | both |
+| `notes/**` | Per-subagent working notes (`code-scout.md` / `landscape.md` / `maturity.md` / `focused-<slug>.md`) — each subagent's *full* findings (the lead gets only their summary). | multi-agent |
+| `code/**` | Real source files gathered by code-scout, as `code/<owner-repo>/<file>`. | multi-agent |
+| `comparison.md` | Subject-vs-alternatives matrix, built by the lead from landscape's data. | multi-agent |
 
 Each cited source now carries `fetched_at` (when it was fetched) and an `origin` (`web`/`code`). Each
 `reference_repos` entry is **enriched deterministically** (copied from real GitHub data, not LLM-guessed)
@@ -291,10 +319,53 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 - **Interactive picker doesn't prompt / exits immediately** → no TTY. Don't pass `-T` to
   `docker-compose run`, or just use `--resume <run_id>` directly.
 
-## 11. Where to go deeper
+## 11. Repository layout & file reference
 
-- [`REPO_GUIDE.md`](REPO_GUIDE.md) — what every folder & file means, and which run-folder files appear in each mode.
-- [`../README.md`](../README.md) — the canonical quickstart.
+**Top-level:**
+
+| Path | What it is |
+|------|------------|
+| `src/ai_engineer_research/` | The Python package — all pipeline logic (modules below). |
+| `frontend/` | The web UI's React/Vite SPA (presentation only; built into the `web` image). |
+| `config/` | Non-secret knobs: `pipeline.yaml` (lead role, depth/breadth, clarify, artifact) + `prompts/` (optional prompt-body overrides — defaults are in code; now incl. `clarify`). Env vars override these. |
+| `docker/` | `Dockerfile` (one-shot CLI app image), `Dockerfile.web` (long-running web UI: multi-stage node→python), `docker-compose.yml` (the `app` + `web` services; tracked, placeholder-clean), `docker-compose.override.yml.example` (copy → gitignored host override for mounts/GPU). |
+| `docs/` | `USAGE.md` (this guide) + `STAGE3_CONTRACT.md` (the frozen Stage 2→3 interface). |
+| `scripts/` | Operational probes (not unit tests): `m0_toolcall_probe.py` (tool-calling go/no-go gate), `reachability_probe.py` (which source domains this network reaches). |
+| `artifacts/` | Output — one folder per run (`dra-…`) + the shared `checkpoints.sqlite`. **Gitignored** (see §8). |
+| `.env` / `docker-compose.override.yml` | **Gitignored** — the ONLY place for secrets/host specifics (model ids, endpoints, keys, paths). Tracked files use placeholders. |
+| `README.md` · `DECISIONS.md` · `DEV_NOTES.md` · `CLAUDE.md` | Index/quickstart · decision + milestone log · gotchas/learnings · the repo's working agreement (+ Claude config). |
+| `pyproject.toml` | Package metadata + dependency extras (`web`, `browser`, `obs`, `ui`, `test`, …). |
+| `tests/` | Pytest suite — event-handler mapping, run-manager single-slot guard, history reads, param validation, and the FastAPI surface (TestClient). |
+
+**The package (`src/ai_engineer_research/`):**
+
+| Module | Responsibility |
+|--------|----------------|
+| `core.py` | `run_research(...)` / `resume_research(...)` — the **stable headless contract**: assemble brief → run loop → ground sources → extract → deterministically enrich `reference_repos` → save versioned artifact → write `00_INDEX.md`. |
+| `agent.py` | The lead loop. `SYSTEM_PROMPT` (lean) + `M2_LEAD_PROMPT` (multi), `compose_lead_prompt(...)`, `build_research_agent(...)`, `run_gather(...)` (timing, salvage-on-error, checkpoint/resume, recursion budget). |
+| `subagents.py` | `build_subagents(...)` — the M2 roster (code-scout / landscape / maturity + focused-investigator), with thoroughness + code-breadth knobs injected into prompts. |
+| `clarify.py` | Pre-research clarifying questions (`clarify_questions` / `fold_answers`); reusable by the CLI and a future UI. |
+| `prompts.py` | `load_prompt(name, default)` — optional prompt-body overrides from `config/prompts/<name>.md` (`AER_PROMPTS_DIR` to relocate). |
+| `models.py` | `build_chat_model(role)` → `ChatOpenAI`. Role→endpoint factory; unset roles fall back to `AER_DEFAULT_ROLE` (default strategic). No model name in code. |
+| `config.py` | `RunConfig` + `load_config` (`.env` + `pipeline.yaml`, env overrides). |
+| `seed.py` | Stage-1 wiki page → research brief (hypotheses, sources, 1-hop links). Wiki is READ-ONLY. |
+| `domains.py` | Preferred / reachable source-domain policy (the `[✓]`/`[✗]` tagging; env-overridable). |
+| `runlog.py` | Per-run fetch ledger → miss-log + coverage manifest; persisted to `ledger.json` for resume. |
+| `evidence.py` | Per-run structured-evidence side-store (mirrors `runlog.py`): captures GitHub/HF/PyPI JSON the tools would otherwise discard → `evidence.json`; enriches `reference_repos` deterministically. Internal, not a contract file. |
+| `checkpoint.py` | Crash-resume via LangGraph SqliteSaver (shared `checkpoints.sqlite`; delete-on-success; stale sweep). |
+| `tracing.py` | Optional self-hosted Langfuse tracing (env-gated `AER_TRACING`; backend in `service-depot`). |
+| `manage.py` | List / clean / resume-all unfinished runs (backs the CLI `--list` / `--clean` / `--resume-all`). |
+| `cli.py` | CLI entrypoint — a thin wrapper over `core.run_research` (+ clarify prompting, resume management). |
+| `webui/` | The web UI backend (presentation/control ONLY — rule #2): `app.py` (FastAPI routes + SPA serve), `events.py` (LangChain callback → UI event handler, injected via `run_research(event_callbacks=…)`), `runner.py` (single-slot `RunManager` + queue→SSE bridge), `history.py` (read-only `artifacts/` views), `config_api.py` (prompt + param editing). Lazy-imports the `[ui]` extra. |
+| `tools/` | `search.py` (SearXNG), `scrape.py` (`fetch_url`), `github.py` / `hf.py` / `pypi.py` (structured APIs). `WEB_TOOLS` (lean) vs `STRUCTURED_TOOLS` (multi-agent). |
+| `artifact/` | `schema.py` (`DeepResearchArtifact`), `store.py` (versioned save/load + `new_artifact_id`), `validate.py`, `extract.py` (the extraction pass). |
+| `cache/store.py` | URL-keyed content cache, shared across subagents within a run. |
+
+(Run-folder files + per-mode differences: §8. The two modes: §7.)
+
+## 12. Where to go deeper
+
+- [`../README.md`](../README.md) — the index + quickstart.
 - [`../DEV_NOTES.md`](../DEV_NOTES.md) — every gotcha and learning (network reachability, vLLM quirks,
   deepagents API traps, grounding discipline). Read this before debugging anything weird.
 - [`../DECISIONS.md`](../DECISIONS.md) — the *why* behind the architecture + full M0→M3 milestone history.

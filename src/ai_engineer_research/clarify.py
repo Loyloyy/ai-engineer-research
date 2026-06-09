@@ -12,16 +12,31 @@ import re
 
 from .config import RunConfig, load_config
 from .models import build_chat_model
+from .prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
-_PROMPT = (
-    "You are scoping a technical research task before it begins. Given the topic and any brief, ask the "
-    "{n} MOST useful clarifying questions that would sharpen the scope — intended use, constraints, "
-    "target environment, what 'done' looks like, which alternatives matter. Do NOT ask anything the "
-    "brief already answers. Output ONLY the questions, one per line, no numbering or preamble. If "
-    "nothing genuinely needs clarifying, output nothing."
+# Default clarify prompt BODY. Overridable via config/prompts/clarify.md (load_prompt) so the UI can tune
+# it like the lead/subagent prompts. The `{n}` placeholder (max question count) is the one code-kept
+# contract — `clarify_appended_note()` documents it for the read-only editor panel.
+_DEFAULT_CLARIFY_PROMPT = (
+    "You are scoping a technical research task before it begins. The END OBJECTIVE IS FIXED: this research "
+    "feeds a Stage-3 PoC builder, so the deliverable is always BUILD-READY material (recommended "
+    "architecture, tech stack, reference repos to template from, implementation steps). Do NOT ask what "
+    "the overall goal/objective is — that is given. Instead ask the {n} MOST useful questions that pin "
+    "down the SPECIFIC PoC: target environment / stack constraints, must-have capabilities, scale or "
+    "performance needs, which alternatives matter, and any hard constraints (license, on-prem, budget). "
+    "Do NOT ask anything the brief already answers. Output ONLY the questions, one per line, no numbering "
+    "or preamble. If nothing genuinely needs clarifying, output nothing."
 )
+
+
+def clarify_appended_note() -> str:
+    """The code-kept rule for the clarify prompt (shown read-only in the UI editor)."""
+    return (
+        "CODE-KEPT: the `{n}` placeholder is substituted with the max question count; the topic + brief "
+        "are appended after this prompt, and the output is parsed one-question-per-line."
+    )
 
 
 def clarify_questions(
@@ -39,8 +54,14 @@ def clarify_questions(
     cfg = cfg or load_config()
     try:
         model = build_chat_model(cfg.lead_role)
+        template = load_prompt("clarify", _DEFAULT_CLARIFY_PROMPT)  # config/prompts/clarify.md override
+        try:
+            head = template.format(n=max_questions)
+        except (KeyError, IndexError, ValueError):
+            # A custom body may have dropped/broken the {n} placeholder — degrade gracefully.
+            head = template + f"\n\nAsk at most {max_questions} questions."
         msg = (
-            _PROMPT.format(n=max_questions)
+            head
             + f"\n\nTopic: {topic}\n"
             + (f"Brief:\n{brief.strip()}\n" if brief.strip() else "Brief: (none)\n")
         )

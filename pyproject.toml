@@ -42,17 +42,20 @@ vault = [
   "rank-bm25",
   "langchain-mcp-adapters",
 ]
-# M3+ — optional presentation layer (no pipeline logic lives here).
-ui = ["gradio>=4"]
+# Optional presentation layer — FastAPI control/UI surface over the headless contract (NO pipeline logic
+# lives here; see src/ai_engineer_research/webui/). Lazy-imported in webui/app.py so the core stays light.
+ui = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "sse-starlette>=2"]
 # Observability — optional Langfuse tracing (self-hosted; see service-depot). Lazy-imported + env-gated
 # (AER_TRACING) in tracing.py, so the core stays import-light when tracing is off.
 obs = ["langfuse>=3"]
+# Test deps (httpx powers fastapi's TestClient). Run in the container alongside `[ui]`.
+test = ["pytest>=8", "httpx"]
 # Server build — everything (incl. the optional browser path).
 all = [
   "httpx", "trafilatura>=1.8", "crawl4ai>=0.4",
   "sentence-transformers", "langchain-classic", "langchain-huggingface",
   "rank-bm25", "langchain-mcp-adapters",
-  "gradio>=4", "langfuse>=3",
+  "fastapi>=0.110", "uvicorn[standard]>=0.27", "sse-starlette>=2", "langfuse>=3",
 ]
 
 [project.scripts]

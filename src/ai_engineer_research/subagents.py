@@ -47,6 +47,13 @@ def thoroughness_directive(level: str) -> str:
     return _THOROUGHNESS.get((level or "").strip().lower(), _THOROUGHNESS["standard"])
 
 
+# Standing objective appended to every subagent (code-kept) — keeps gathering oriented at Stage 3.
+_MISSION_LINE = (
+    "(This research feeds a Stage-3 PoC builder — surface BUILD-RELEVANT detail an engineer needs to "
+    "start building: architecture, concrete tech/versions, reference code, and how to run it.)"
+)
+
+
 # --- Routing descriptions (when the lead picks a subagent). Not overridable — they're dispatch hints. ---
 _DESCRIPTIONS = {
     "code-scout": (
@@ -108,13 +115,16 @@ def _requirements(name: str, *, repos: int, files: int) -> str:
             f"For the TOP {repos} implementations, SAVE up to {files} representative source files each "
             "into `code/<owner-repo>/<filename>` using write_file — fetch raw files via fetch_url on "
             "https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>.\n"
+            "For EACH saved repo, capture its BUILDABILITY for a PoC: the entry point(s)/main module, how "
+            "to install and run it, and whether it ships a runnable example or quickstart — this feeds the "
+            "Stage-3 build plan.\n"
             "You have TWO required file outputs before returning (write BOTH with write_file): "
             "(1) representative source files under `code/<owner-repo>/`, and (2) `notes/code-scout.md` "
-            "with your full findings (repos evaluated, files saved, key implementation notes). Do not "
-            "return until notes/code-scout.md exists.\n"
+            "with your full findings (repos evaluated, files saved, key implementation notes, buildability "
+            "per repo). Do not return until notes/code-scout.md exists.\n"
             "Then RETURN a concise summary: the key repos (full_name, ★, license, url), which files you "
-            "saved (paths under code/), and notable implementation details / patterns. Do not paste large "
-            "code into the summary — it's on disk."
+            "saved (paths under code/), buildability per repo, and notable implementation details / "
+            "patterns. Do not paste large code into the summary — it's on disk."
         )
     if name == "landscape":
         return (
@@ -139,6 +149,36 @@ def _requirements(name: str, *, repos: int, files: int) -> str:
     )
 
 
+SUBAGENT_NAMES = ("code-scout", "landscape", "maturity", "focused-investigator")
+
+
+def _assemble_subagent(body: str, name: str, *, thoroughness: str, repos: int, files: int) -> str:
+    """Wrap a subagent BODY with the code-kept parts (grounding + thoroughness + requirements + mission).
+    Single source of truth for the assembly order.
+    """
+    depth = thoroughness_directive(thoroughness)
+    reqs = _requirements(name, repos=repos, files=files)
+    return f"{body}\n{_GROUNDING}\n{depth}\n{reqs}\n{_MISSION_LINE}"
+
+
+def subagent_default_body(name: str) -> str:
+    """The built-in body for a subagent (what config/prompts/<name>.md replaces)."""
+    return _BODIES[name]
+
+
+def subagent_appended_preview(
+    name: str, *, thoroughness: str = "standard", code_max_repos: int = 3, code_files_per_repo: int = 3
+) -> str:
+    """Read-only display of a subagent's code-kept wrapper, with an editable-body marker (for the UI)."""
+    return _assemble_subagent(
+        "«— your editable body (config/prompts/<name>.md) goes here —»",
+        name,
+        thoroughness=thoroughness,
+        repos=max(1, int(code_max_repos)),
+        files=max(1, int(code_files_per_repo)),
+    )
+
+
 def build_subagents(
     *,
     thoroughness: str = "standard",
@@ -150,19 +190,19 @@ def build_subagents(
     thoroughness: light|standard|deep gather-depth directive appended to every subagent.
     code_max_repos / code_files_per_repo: code-scout's gather breadth.
     """
-    depth = thoroughness_directive(thoroughness)
     repos = max(1, int(code_max_repos))
     files = max(1, int(code_files_per_repo))
 
     roster = []
-    for name in ("code-scout", "landscape", "maturity", "focused-investigator"):
+    for name in SUBAGENT_NAMES:
         body = load_prompt(name, _BODIES[name])  # config/prompts/<name>.md overrides the body
-        reqs = _requirements(name, repos=repos, files=files)
         roster.append(
             {
                 "name": name,
                 "description": _DESCRIPTIONS[name],
-                "system_prompt": f"{body}\n{_GROUNDING}\n{depth}\n{reqs}",
+                "system_prompt": _assemble_subagent(
+                    body, name, thoroughness=thoroughness, repos=repos, files=files
+                ),
             }
         )
     return roster

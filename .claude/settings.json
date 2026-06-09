@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git rebase:*)",
+      "Bash(git merge:*)",
+      "Bash(git restore:*)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)",
+      "Bash(git clean:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(uv pip:*)",
+      "Bash(uv add:*)",
+      "Bash(uv sync:*)",
+      "Bash(poetry install:*)",
+      "Bash(poetry add:*)"
+    ],
+    "allow": [
+      "Bash(python -m py_compile:*)",
+      "Bash(python3 -m py_compile:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(rg:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

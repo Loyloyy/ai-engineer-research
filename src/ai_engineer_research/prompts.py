@@ -7,7 +7,7 @@ appends the non-negotiable parts — grounding rules, required file outputs (`re
 silently break a run. Relocate the override dir with `AER_PROMPTS_DIR` (default `config/prompts/`).
 
 Override file names (all optional): lead_lean · lead_multi · code-scout · landscape · maturity ·
-focused-investigator.
+focused-investigator · clarify.
 """
 from __future__ import annotations
 
@@ -19,7 +19,9 @@ from .config import ROOT
 
 logger = logging.getLogger(__name__)
 
-PROMPT_NAMES = ("lead_lean", "lead_multi", "code-scout", "landscape", "maturity", "focused-investigator")
+PROMPT_NAMES = (
+    "lead_lean", "lead_multi", "code-scout", "landscape", "maturity", "focused-investigator", "clarify",
+)
 
 
 def prompts_dir() -> Path:

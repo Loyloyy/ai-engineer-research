@@ -1,0 +1,39 @@
+# Web UI image — the FastAPI control/presentation surface + the built React SPA.
+# Multi-stage: stage 1 (node) builds the SPA; stage 2 (python) serves it via uvicorn alongside the API.
+# No pipeline logic lives in the UI (CLAUDE.md rule #3) — it wraps the headless contract.
+
+# ---- stage 1: build the React/Vite SPA ----
+FROM node:20-slim AS frontend
+WORKDIR /build
+# Copy manifest(s) first for layer caching, then install + build.
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build   # -> /build/dist
+
+# ---- stage 2: python runtime (API + static serve) ----
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/app/.hf_cache \
+    AER_UI_STATIC_DIR=/app/frontend/dist
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Deps first (better layer caching). web = fetch backend used by the core; obs = optional tracing;
+# ui = fastapi/uvicorn/sse-starlette (this layer).
+COPY pyproject.toml ./
+COPY src ./src
+RUN pip install --upgrade pip && pip install -e ".[web,obs,ui]"
+
+# Runtime assets + the built SPA from stage 1.
+COPY config ./config
+COPY --from=frontend /build/dist ./frontend/dist
+
+EXPOSE 8000
+CMD ["uvicorn", "ai_engineer_research.webui.app:app", "--host", "0.0.0.0", "--port", "8000"]

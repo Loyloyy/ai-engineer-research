@@ -493,6 +493,62 @@ grades its own homework; becomes a future reflect-prompt + confidence-from-refle
 per-claim threading, non-trivial). P4 (runnable `implementation_steps` hints) **deferred** until Stage 3
 exists to say what it needs. P5 (machine-readable comparison) **optional**, later.
 
+## Stage-3-aligned prompts + numbered report citations
+The lead/subagent/clarify prompts now state the FIXED objective: every run feeds the Stage-3 PoC builder, so
+the deliverable is BUILD-READY material (architecture / tech stack + rationale / reference repos to template
+from / implementation steps). `report.md`'s structure was reorganized into builder-oriented sections that map
+to the artifact's build fields, so extraction (`extract.py`, prose→fields) has richer material to pull from.
+`clarify.py` no longer asks the generic "what's the objective" (it's given) — it asks scope-specific
+questions (target env/constraints, must-have capabilities, which alternatives matter). The mission + citation
+format are **code-kept** (`_MISSION`/`_CITATION_RULES` in `agent.py`, assembled by the pure, testable
+`compose_lead_prompt`; `_MISSION_LINE` in `build_subagents`) so a `config/prompts/` body override can't drop
+them. `code-scout` additionally captures per-repo **buildability** (entry point / install+run / runnable
+example) → strengthens `reference_repos` + the build plan.
+
+**Citations:** `report.md` uses numbered inline `[n]` markers + a numbered, markdown-linked `## Sources` list
+(claims trace to clickable sources). Prompt-enforced (soft, like the other prompt knobs); independent of the
+machine-readable `Finding.evidence_ids`→`Source.id` layer (unchanged). Chose numbered over reference-style
+for scannability. (Markdown-file reorg is a separate, deferred follow-up.)
+
+## Web UI — FastAPI control/presentation layer + React SPA (2026-06-10)
+A web UI for the headless researcher: launch/scope a run, watch it live (a pipeline diagram that lights up
+per stage/subagent + a technical event/URL/token feed), prompt-engineer the lead/subagent prompts, tune the
+non-secret knobs, and browse past runs. Decided with the user: **FastAPI backend wrapping the contract + a
+separate React/Vite SPA** (chosen over Gradio/HTMX — richer two-audience showcase; the SPA builds in a
+multi-stage Docker image, no local node). Honors **rule #3**: presentation/control ONLY — no pipeline logic
+in the UI; it calls `run_research`/`resume_research` and renders events.
+
+- **Core event seam (the one core change).** An optional, presentation-agnostic `event_callbacks: list`
+  is threaded `run_research`/`resume_research` → `run_gather` → `invoke_config["callbacks"]`, **appended
+  alongside** the Langfuse tracer (`agent.py`: `callbacks = [tracer?] + event_callbacks`). It rides the
+  exact seam `tracing.py` proved: one handler at the top traces the WHOLE run tree (lead + subagents +
+  tools) across every retry/resume attempt; `_finalize` also passes it to `extract_artifact`
+  (`extra_callbacks`) so the extraction LLM call surfaces too. Empty/None → zero behaviour change, so the
+  CLI path is untouched. The UI supplies a `BaseCallbackHandler` that pushes structured events onto a
+  thread-safe queue; the FastAPI layer drains it to an SSE stream. Chose threading a callback list over a
+  bespoke event bus because the graph already propagates LangChain callbacks for free.
+- **One active run at a time (single slot).** The core uses per-process module singletons
+  (`runlog._ledger`, `evidence._evidence`, the URL cache, configured per run via `configure_*`), so two
+  concurrent runs would corrupt each other. The web layer enforces a single-slot `RunManager`: a 2nd
+  `POST /runs` gets **409**. `run_research` is synchronous + long (~10 min multi-agent), so it runs in a
+  threadpool (`run_in_executor`); the sync callback → asyncio queue bridge feeds SSE without blocking the
+  loop. The live URL/coverage feed reads `runlog.current_ledger()` directly (same process); the streamed
+  report is produced by polling the run-folder files (the lead writes `report.md` via `write_file`, not as
+  LLM tokens), reusing the existing run artifacts rather than a parallel pipeline.
+- **Edits target `config/pipeline.yaml` + `config/prompts/`, never `.env`.** Param editing is the
+  non-secret pipeline knobs (validated allow-list); prompt editing writes the overridable BODY only
+  (`config/prompts/<name>.md` via the existing `prompts.load_prompt` seam) — the code-kept "always
+  appended" parts (mission/citations/grounding/required-outputs/injected knobs) are shown READ-ONLY. The
+  **clarify** prompt gained a matching override seam (`load_prompt("clarify", …)`; added to `PROMPT_NAMES`)
+  so it's tunable from the UI like the rest. `.env` (model endpoints/keys) stays out of the UI entirely.
+- **Deployment.** New long-running `web` compose service (profile `["web"]`, `Dockerfile.web` multi-stage:
+  node builds the SPA → python serves it via uvicorn), on `depot-net`, reached by SSH tunnel like Langfuse.
+  Web deps are an `[ui]` extra (`fastapi`/`uvicorn`/`sse-starlette`, replacing the old `gradio`),
+  lazy-imported in `webui/` so the core stays import-light. The one-shot `app` service is unchanged.
+- **Status:** Phase 1 (event seam + live run stream + diagram + history) first; Phase 2 (prompt/param
+  editors + clarify seam); Phase 3 deferred = a replay/demo mode that re-streams a finished run's events
+  from its run-folder files over the same SSE channel.
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

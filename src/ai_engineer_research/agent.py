@@ -73,17 +73,21 @@ mark it "(unverified — snippet only)" and treat it as low confidence.
 - NEVER present unverified claims or your own background knowledge as findings. If you couldn't reach \
 the evidence, say so plainly. Honest gaps beat confident guesses.
 
-OUTPUT. Write the final report to `report.md`:
+OUTPUT. Write the final report to `report.md`, structured so a BUILDER can act on it (these sections map \
+to what Stage 3 consumes):
   # <Title>
-  <comprehensive, specific, structured sections: mechanisms, real code/examples, numbers, limitations, \
-alternatives, trade-offs vs alternatives, production-readiness. Inline-cite by URL. Thorough but NOT \
-padded — every claim earns its tokens; don't restate the brief.>
-  ## Sources
-  - <url> — <what it supported>
-  ## Coverage & confidence
-  <one short paragraph: which source kinds you could reach vs not, and where confidence is HIGH \
-(verified from fetched primary sources) vs LOWER (snippet/unreachable-limited).>
-The report file is the deliverable — write it before finishing. Do not fabricate URLs, quotes, or numbers."""
+  ## Overview — what it is, in 2-4 sentences.
+  ## Recommended architecture — the components and how they fit (enough that a builder could draw it).
+  ## Tech stack — per layer: the choice, the rationale, and viable alternatives.
+  ## Reference implementations — the best repos to template from, why, and their maturity (stars/activity/license).
+  ## Implementation steps — an ordered, concrete plan to stand up a PoC (what to build first, then next).
+  ## Limitations & production-readiness — real failure modes, gotchas, what's not ready.
+  ## Open questions & risks — what's unresolved or needs a decision before building.
+  ## Sources — (numbered, linked; see CITATIONS).
+  ## Coverage & confidence — which source kinds you could reach vs not; where confidence is HIGH (verified \
+primary) vs LOWER (snippet/unreachable).
+Be thorough but NOT padded — every claim earns its tokens; don't restate the brief. Do not fabricate URLs, \
+quotes, or numbers. The report file is the deliverable — write it before finishing."""
 
 
 M2_LEAD_PROMPT = """You are the LEAD of a research team. You scope the work, delegate to specialist \
@@ -112,10 +116,12 @@ disagreements inline with the wiki convention `[CONTRADICTION: …]`. This tensi
    - `comparison.md`: a markdown table — rows = the subject + each alternative (from landscape), \
 columns = maturity, license, key strengths, key weaknesses, best-for. Build it from the subagents' \
 summaries (you work from their distilled outputs, not raw context).
-   - `report.md`: comprehensive, specific, structured (architecture/mechanisms, real code refs from \
-code-scout, limitations + production-readiness from maturity, alternatives + comparison). Inline-cite \
-by URL. Then `## Sources` (only fetched/API-derived) and `## Coverage & confidence` (what you could \
-reach vs not; HIGH vs LOWER confidence).
+   - `report.md`: BUILDER-oriented, structured so Stage 3 can act on it — sections: Overview · \
+Recommended architecture · Tech stack (layer → choice + rationale + alternatives) · Reference \
+implementations (best repos to build from, from code-scout, with maturity) · Implementation steps \
+(ordered plan to a PoC) · Limitations & production-readiness (from maturity) · Open questions & risks · \
+`## Sources` (numbered, linked) · `## Coverage & confidence`. Pull real code refs from code-scout and the \
+alternatives from comparison.md.
 
 GROUNDING: cite only what the team actually fetched or got from structured APIs; mark snippet/blocked \
 sources '(unverified)'. Never fill gaps from background knowledge. Be comprehensive, not padded. \
@@ -130,6 +136,62 @@ _LEAD_RULES = (
     "background knowledge as a finding. Write the final report to `report.md` before finishing."
 )
 _LEAD_RULES_MULTI = _LEAD_RULES + " In multi-agent mode also write `comparison.md`."
+
+# Standing objective + citation format. Code-kept (applied regardless of any config/prompts override) so
+# every run stays oriented at the Stage-3 PoC builder and emits traceable citations.
+_MISSION = (
+    "MISSION: this research is the INPUT to a Stage-3 PoC builder. The end objective is FIXED — produce "
+    "BUILD-READY material an engineer can act on: a recommended architecture, a concrete tech stack (with "
+    "rationale + alternatives), the best reference implementations to template from, and concrete "
+    "implementation steps to stand up a working proof-of-concept. Orient gathering and the report toward "
+    "what someone needs to START BUILDING — not a literature survey."
+)
+_CITATION_RULES = (
+    "CITATIONS: in report.md, cite claims with inline numbered markers like [1], [2] placed right after the "
+    "supported statement. End the report with a numbered `## Sources` list where every entry is a markdown "
+    "link: `1. [title or owner/repo](url) — what it supported`. Number sources in order of first appearance "
+    "and reuse the same number when a source recurs. Only fetched / structured-API sources get a number; "
+    "snippet-only or blocked sources stay marked '(unverified)' and are NOT numbered."
+)
+
+
+def _assemble_lead(body: str, multi_agent: bool, cfg: RunConfig) -> str:
+    """Wrap a lead prompt BODY with the code-kept parts. Single source of truth for the assembly order:
+    mission + body + thoroughness + [fan-out budget] + citation rules + lead rules.
+    """
+    depth = thoroughness_directive(cfg.thoroughness)
+    if multi_agent:
+        fanout = (
+            "FAN-OUT BUDGET: the three fixed subagents (code-scout/landscape/maturity) always run; beyond "
+            f"them, spawn AT MOST {cfg.max_investigators} focused-investigator pass(es), and only for a "
+            "genuine topic-specific gap — not by default."
+        )
+        return f"{_MISSION}\n\n{body}\n\n{depth}\n\n{fanout}\n\n{_CITATION_RULES}\n\n{_LEAD_RULES_MULTI}"
+    return f"{_MISSION}\n\n{body}\n\n{depth}\n\n{_CITATION_RULES}\n\n{_LEAD_RULES}"
+
+
+def lead_default_body(multi_agent: bool) -> str:
+    """The built-in lead body (what a config/prompts/lead_*.md override replaces)."""
+    return M2_LEAD_PROMPT if multi_agent else SYSTEM_PROMPT
+
+
+def lead_appended_preview(multi_agent: bool, cfg: RunConfig) -> str:
+    """Read-only display of the code-kept wrapper, with a marker where the editable body lands.
+
+    Used by the UI prompt editor so a user sees exactly which parts an override can NOT change.
+    """
+    return _assemble_lead("«— your editable body (config/prompts/lead_*.md) goes here —»", multi_agent, cfg)
+
+
+def compose_lead_prompt(multi_agent: bool, cfg: RunConfig) -> str:
+    """Assemble the lead system prompt (pure + testable; no model/agent construction).
+
+    Order: mission + overridable body (config/prompts/lead_*) + thoroughness + [fan-out budget] +
+    citation rules + lead rules. Mission/citations/rules are code-kept so a body override can't drop them.
+    """
+    name = "lead_multi" if multi_agent else "lead_lean"
+    base = load_prompt(name, lead_default_body(multi_agent))
+    return _assemble_lead(base, multi_agent, cfg)
 
 
 def _run_dir(run_id: str) -> Path:
@@ -155,17 +217,7 @@ def build_research_agent(cfg: RunConfig, run_dir: Path, multi_agent: bool = Fals
     backend = FilesystemBackend(root_dir=str(run_dir), virtual_mode=True)
     model = build_chat_model(cfg.lead_role)
     extra = {"checkpointer": checkpointer} if checkpointer is not None else {}
-    depth = thoroughness_directive(cfg.thoroughness)
     if multi_agent:
-        # Body is overridable (config/prompts/lead_multi.md); depth + fan-out budget + rules are code-kept.
-        # Fan-out budget caps ad-hoc focused-investigator spawns (the 3 fixed subagents always run).
-        base = load_prompt("lead_multi", M2_LEAD_PROMPT)
-        lead_prompt = (
-            f"{base}\n\n{depth}\n\n"
-            f"FAN-OUT BUDGET: the three fixed subagents (code-scout/landscape/maturity) always run; "
-            f"beyond them, spawn AT MOST {cfg.max_investigators} focused-investigator pass(es), and only "
-            f"for a genuine topic-specific gap — not by default.\n\n{_LEAD_RULES_MULTI}"
-        )
         subagents = build_subagents(
             thoroughness=cfg.thoroughness,
             code_max_repos=cfg.code_max_repos,
@@ -174,16 +226,15 @@ def build_research_agent(cfg: RunConfig, run_dir: Path, multi_agent: bool = Fals
         return create_deep_agent(
             model=model,
             tools=[*WEB_TOOLS, *STRUCTURED_TOOLS],
-            system_prompt=lead_prompt,
+            system_prompt=compose_lead_prompt(True, cfg),
             subagents=subagents,
             backend=backend,
             **extra,
         )
-    base = load_prompt("lead_lean", SYSTEM_PROMPT)  # body overridable; depth + rules code-kept
     return create_deep_agent(
         model=model,
         tools=WEB_TOOLS,
-        system_prompt=f"{base}\n\n{depth}\n\n{_LEAD_RULES}",
+        system_prompt=compose_lead_prompt(False, cfg),
         backend=backend,
         **extra,
     )
@@ -210,12 +261,16 @@ def run_gather(
     interactive: bool = False,
     multi_agent: bool | None = None,
     resume: bool = False,
+    event_callbacks: list | None = None,
 ) -> tuple[str, Path, str]:
     """Lead-loop entrypoint. Returns (report_markdown, run_dir, run_id).
 
     multi_agent: None → use cfg.multi_agent (env AER_MULTI_AGENT / pipeline.yaml); True/False overrides.
     resume: continue a prior truncated run from its checkpoint (same run_id/thread_id), restoring the
       fetch ledger from disk; the initial invoke continues the graph instead of starting fresh.
+    event_callbacks: optional, presentation-agnostic LangChain callback handlers (e.g. a UI event
+      handler) appended ALONGSIDE the Langfuse tracer onto invoke_config — so they trace the whole run
+      tree (lead + subagents + tools) across every retry/resume attempt, exactly like the tracer.
     Writes into the run folder: report.md, scope.md, reflection.md (+ comparison.md & code/** in M2),
     coverage.json + ledger.json (ledger).
     """
@@ -261,10 +316,12 @@ def run_gather(
         invoke_config["configurable"] = {"thread_id": run_id}
     # Optional Langfuse tracing: one handler at the top traces the whole run tree (lead + subagents +
     # tools); session=run_id groups every attempt + the extraction pass. None when AER_TRACING is off.
+    # The optional UI event handler(s) ride the same seam — both propagate through the graph identically.
     mode = "multi-agent" if use_multi else "lean"
     tracer = build_tracer()
-    if tracer is not None:
-        invoke_config["callbacks"] = [tracer]
+    callbacks = ([tracer] if tracer is not None else []) + list(event_callbacks or [])
+    if callbacks:
+        invoke_config["callbacks"] = callbacks
     logger.info(
         "research run %s %s (mode=%s lead_role=%s checkpoint=%s trace=%s) -> %s",
         run_id, "RESUMING" if resume else "starting",

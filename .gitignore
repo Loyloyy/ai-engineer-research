@@ -1,5 +1,7 @@
 # ---- secrets / machine-specific config (NEVER commit) ----
 .env
+# Claude Code: personal/local settings (project .claude/settings.json IS committed; this one isn't)
+.claude/settings.local.json
 # host-specific docker overrides (model mounts, GPU, served-model id, endpoints) — keep out of git
 docker/docker-compose.override.yml
 docker-compose.override.yml

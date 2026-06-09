@@ -51,8 +51,11 @@ button.ghost { background: var(--panel-2); color: var(--fg); border: 1px solid v
 button.link { background: none; color: #7cb0ff; padding: 0; }
 
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-@media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+/* minmax(0,1fr) (not bare 1fr) lets each track shrink below its content width, so wide content (long
+   URLs, comparison tables) scrolls/clips inside its column instead of overflowing into the neighbour.
+   align-items:start keeps columns top-aligned regardless of differing content heights. */
+.two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
 
 .field { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; }
 label { color: var(--muted); font-size: 13px; }
@@ -110,15 +113,19 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .markdown pre { background: var(--panel-2); padding: 12px; border-radius: 6px; overflow-x: auto; }
 .markdown code { background: var(--panel-2); }
 
-/* ledger / events */
-.ledger table { width: 100%; border-collapse: collapse; }
+/* ledger / events — both bounded + internally scrollable so the two technical columns stay tidy boxes
+   of comparable height instead of one growing unbounded. */
+.ledger { max-height: 380px; overflow: auto; }
+.ledger table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .ledger th, .ledger td { padding: 4px 8px; border-bottom: 1px solid var(--border); font-size: 13px; text-align: left; }
-.ledger .url { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ledger .host { color: var(--muted); }
+.ledger td.url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger .host { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.ledger th:first-child, .ledger td:first-child { width: 22px; }
 
-.eventlog { list-style: none; padding: 0; margin: 0; max-height: 460px; overflow-y: auto; }
-.eventlog .ev { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-.tag { font-size: 10px; text-transform: uppercase; color: var(--muted); border: 1px solid var(--border); padding: 0 5px; border-radius: 4px; height: fit-content; }
+.eventlog { list-style: none; padding: 0; margin: 0; max-height: 380px; overflow-y: auto; }
+.eventlog .ev { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; min-width: 0; }
+.eventlog .ev .txt { overflow-wrap: anywhere; min-width: 0; }
+.tag { font-size: 10px; text-transform: uppercase; color: var(--muted); border: 1px solid var(--border); padding: 0 5px; border-radius: 4px; height: fit-content; flex: none; }
 .ev-llm .tag { color: #c4b5fd; }
 
 .subagents { list-style: none; padding: 0; }

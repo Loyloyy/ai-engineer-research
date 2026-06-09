@@ -8,9 +8,7 @@
 # endpoint if not host.docker.internal) go in docker-compose.override.yml (gitignored) —
 # see docker-compose.override.yml.example.
 #
-# `version:` (not `name:`) — the server runs docker-compose v1, which requires it.
-
-version: "3.8"
+# No top-level `version:` — the deploy server runs Compose v2, which treats it as obsolete (warns).
 
 services:
   # ---- The researcher app (run via `docker compose run`, not auto-started) ----

@@ -11,11 +11,22 @@ from __future__ import annotations
 import logging
 
 import yaml
+from pydantic import BaseModel
 
 from ..config import ROOT, load_config
 from ..prompts import PROMPT_NAMES, load_prompt, prompts_dir
 
 logger = logging.getLogger(__name__)
+
+
+# Module-level so FastAPI can resolve the (PEP 563 string) annotations against module globals — nesting
+# these inside register_config_routes() would make body params read as query params (→ 422). See app.py.
+class PromptBody(BaseModel):
+    body: str
+
+
+class ParamsBody(BaseModel):
+    params: dict
 
 # Non-secret pipeline.yaml knobs the UI may edit, with their expected types. Anything not here is
 # rejected (so a secret/model endpoint can never be smuggled into the tracked yaml).
@@ -132,13 +143,6 @@ def _validate_and_merge(incoming: dict) -> dict:
 
 def register_config_routes(app) -> None:
     from fastapi import HTTPException
-    from pydantic import BaseModel
-
-    class PromptBody(BaseModel):
-        body: str
-
-    class ParamsBody(BaseModel):
-        params: dict
 
     @app.get("/api/prompts")
     def list_prompts() -> dict:

@@ -20,11 +20,31 @@ import logging
 import os
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from ..config import ROOT
 from . import history
 from .runner import RunBusy, manager
 
 logger = logging.getLogger(__name__)
+
+
+# Request models MUST live at module level: with `from __future__ import annotations` the route hints are
+# strings, and FastAPI resolves them against module globals — models nested inside create_app() wouldn't
+# resolve, so FastAPI would mis-read the body params as query params (→ 422). (pydantic is a core dep, so
+# importing BaseModel here keeps app import light; fastapi/sse-starlette stay lazy inside create_app.)
+class ClarifyRequest(BaseModel):
+    topic: str
+    brief: str = ""
+
+
+class RunRequest(BaseModel):
+    topic: str
+    brief: str = ""
+    seed_pages: list[str] | None = None
+    multi_agent: bool | None = None
+    thoroughness: str | None = None
+    clarifications: list[tuple[str, str]] | None = None  # [(question, answer), ...]
 
 
 def _static_dir() -> Path:
@@ -34,23 +54,9 @@ def _static_dir() -> Path:
 def create_app():
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import PlainTextResponse
-    from pydantic import BaseModel
     from sse_starlette.sse import EventSourceResponse
 
     app = FastAPI(title="ai-engineer-research UI", version="0.1.0")
-
-    # ---- request models ----
-    class ClarifyRequest(BaseModel):
-        topic: str
-        brief: str = ""
-
-    class RunRequest(BaseModel):
-        topic: str
-        brief: str = ""
-        seed_pages: list[str] | None = None
-        multi_agent: bool | None = None
-        thoroughness: str | None = None
-        clarifications: list[tuple[str, str]] | None = None  # [(question, answer), ...]
 
     # ---- run control ----
     @app.post("/api/clarify")

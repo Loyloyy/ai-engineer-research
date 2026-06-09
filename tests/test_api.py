@@ -48,9 +48,11 @@ def test_history_endpoints(client, tmp_path):
     detail = client.get(f"/api/runs/{rid}").json()
     assert detail["artifact"]["topic"] == "rag"
     assert client.get("/api/runs/does-not-exist").status_code == 404
-    # file serving (path-confined)
+    # file serving — served file 200, missing file 404. (Path-traversal confinement is unit-tested at
+    # the function level in test_history.py::test_resolve_run_file_confined; asserting it through the HTTP
+    # client here is unreliable because httpx normalizes `../` out of the URL before the request is sent.)
     assert client.get(f"/api/runs/{rid}/files/report.md").status_code == 200
-    assert client.get(f"/api/runs/{rid}/files/../../etc/passwd").status_code == 404
+    assert client.get(f"/api/runs/{rid}/files/nope.md").status_code == 404
 
 
 def test_prompts_roundtrip(client):

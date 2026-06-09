@@ -1,17 +1,11 @@
-# Web UI image — the FastAPI control/presentation surface + the built React SPA.
-# Multi-stage: stage 1 (node) builds the SPA; stage 2 (python) serves it via uvicorn alongside the API.
+# Web UI image — the FastAPI control/presentation surface, serving the PREBUILT React SPA.
 # No pipeline logic lives in the UI (CLAUDE.md rule #3) — it wraps the headless contract.
-
-# ---- stage 1: build the React/Vite SPA ----
-FROM node:20-slim AS frontend
-WORKDIR /build
-# Copy manifest(s) first for layer caching, then install + build.
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install
-COPY frontend/ ./
-RUN npm run build   # -> /build/dist
-
-# ---- stage 2: python runtime (API + static serve) ----
+#
+# WHY no node build here: the deploy server's egress blocks the npm registry (only GitHub/HF/PyPI/
+# container registries are reachable), so `npm install` ECONNRESETs during a server-side build. The SPA
+# is therefore built OFF-server (any box with npm + internet) and its `frontend/dist/` is committed to
+# the repo; this image just copies + serves it. PyPI IS reachable, so the Python layer still builds here.
+# Rebuild the SPA after any frontend change:  cd frontend && npm install && npm run build  (then commit dist).
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -31,9 +25,9 @@ COPY pyproject.toml ./
 COPY src ./src
 RUN pip install --upgrade pip && pip install -e ".[web,obs,ui]"
 
-# Runtime assets + the built SPA from stage 1.
+# Runtime assets + the prebuilt SPA (built off-server; see header).
 COPY config ./config
-COPY --from=frontend /build/dist ./frontend/dist
+COPY frontend/dist ./frontend/dist
 
 EXPOSE 8000
 CMD ["uvicorn", "ai_engineer_research.webui.app:app", "--host", "0.0.0.0", "--port", "8000"]

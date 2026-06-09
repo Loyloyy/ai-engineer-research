@@ -80,8 +80,22 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .pill.lean { color: #93c5fd; }
 .pill.warn { color: var(--warn); }
 
-.diagram { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
-.diagram svg { max-width: 100%; }
+.diagram { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; overflow-x: auto; }
+.diagram.lean { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.diagram.lean .step { display: flex; align-items: center; gap: 4px; }
+.diagram.lean .arrow { color: var(--muted); margin: 0 6px; }
+.diagram.multi { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.diagram.multi .fanout { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+.diagram.multi .branch { display: flex; flex-direction: column; align-items: center; }
+.diagram.multi .connector { width: 2px; height: 18px; background: var(--border); }
+.node {
+  padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); transition: all 0.2s;
+}
+.node-active { background: var(--accent); color: #fff; border-color: #93c5fd; box-shadow: 0 0 10px rgba(59,130,246,0.5); }
+.node-done { background: #1f3a2e; color: #9fe3bf; border-color: #3f6d54; }
+.node-engaged { background: #1f3a2e; color: #9fe3bf; border-color: #3f6d54; }
+.node-idle { opacity: 0.7; }
 
 .tabs { display: flex; gap: 6px; margin: 16px 0 12px; }
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }

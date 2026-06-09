@@ -227,11 +227,22 @@ launch a run, watch it live (a pipeline diagram that lights up per stage/subagen
 token feed + the report streaming in), prompt-engineer any prompt, tune the non-secret knobs, and browse
 past runs. It's a long-running FastAPI service + a built React SPA, served on port 8000.
 
+The SPA is **built off-server** and its `frontend/dist/` is committed — the deploy server's egress blocks
+the npm registry, so the image can't `npm install`. Rebuild the bundle on any box with npm + internet (e.g.
+your dev machine) whenever the frontend changes, then commit it:
+
+```bash
+# (only when frontend/ changed) build the SPA where npm is reachable, then commit frontend/dist
+cd frontend && npm install && npm run build && cd ..
+```
+
+On the server:
+
 ```bash
 # 1. bring up shared services (search + optional tracing), as for any run
 cd ../service-depot && ./depot up stage-2
 
-# 2. build + start the web service (multi-stage image: builds the SPA, then serves it)
+# 2. build + start the web service (Python-only build — copies the prebuilt frontend/dist; PyPI is reachable)
 cd ../ai-engineer-research
 docker compose --profile web up --build web        # serves on :8000 inside the server
 
@@ -326,9 +337,9 @@ source (not a hallucination or a search snippet). Snippets/blocked sources are m
 | Path | What it is |
 |------|------------|
 | `src/ai_engineer_research/` | The Python package — all pipeline logic (modules below). |
-| `frontend/` | The web UI's React/Vite SPA (presentation only; built into the `web` image). |
+| `frontend/` | The web UI's React/Vite SPA (presentation only). Built off-server (npm is blocked on the server); the committed `frontend/dist/` ships the bundle. |
 | `config/` | Non-secret knobs: `pipeline.yaml` (lead role, depth/breadth, clarify, artifact) + `prompts/` (optional prompt-body overrides — defaults are in code; now incl. `clarify`). Env vars override these. |
-| `docker/` | `Dockerfile` (one-shot CLI app image), `Dockerfile.web` (long-running web UI: multi-stage node→python), `docker-compose.yml` (the `app` + `web` services; tracked, placeholder-clean), `docker-compose.override.yml.example` (copy → gitignored host override for mounts/GPU). |
+| `docker/` | `Dockerfile` (one-shot CLI app image), `Dockerfile.web` (long-running web UI; Python-only, serves the prebuilt `frontend/dist`), `docker-compose.yml` (the `app` + `web` services; tracked, placeholder-clean), `docker-compose.override.yml.example` (copy → gitignored host override for mounts/GPU). |
 | `docs/` | `USAGE.md` (this guide) + `STAGE3_CONTRACT.md` (the frozen Stage 2→3 interface). |
 | `scripts/` | Operational probes (not unit tests): `m0_toolcall_probe.py` (tool-calling go/no-go gate), `reachability_probe.py` (which source domains this network reaches). |
 | `artifacts/` | Output — one folder per run (`dra-…`) + the shared `checkpoints.sqlite`. **Gitignored** (see §8). |

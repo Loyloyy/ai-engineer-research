@@ -1,3 +1,6 @@
 node_modules/
-dist/
 *.local
+
+# NOTE: dist/ is intentionally NOT ignored — it is committed so the server (which can't reach the npm
+# registry) can build the web image from the prebuilt bundle. Rebuild + recommit after frontend changes:
+#   cd frontend && npm install && npm run build

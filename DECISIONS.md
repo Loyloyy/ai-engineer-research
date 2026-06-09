@@ -541,10 +541,18 @@ in the UI; it calls `run_research`/`resume_research` and renders events.
   appended" parts (mission/citations/grounding/required-outputs/injected knobs) are shown READ-ONLY. The
   **clarify** prompt gained a matching override seam (`load_prompt("clarify", …)`; added to `PROMPT_NAMES`)
   so it's tunable from the UI like the rest. `.env` (model endpoints/keys) stays out of the UI entirely.
-- **Deployment.** New long-running `web` compose service (profile `["web"]`, `Dockerfile.web` multi-stage:
-  node builds the SPA → python serves it via uvicorn), on `depot-net`, reached by SSH tunnel like Langfuse.
-  Web deps are an `[ui]` extra (`fastapi`/`uvicorn`/`sse-starlette`, replacing the old `gradio`),
-  lazy-imported in `webui/` so the core stays import-light. The one-shot `app` service is unchanged.
+- **Deployment.** New long-running `web` compose service (profile `["web"]`, `Dockerfile.web`), on
+  `depot-net`, reached by SSH tunnel like Langfuse. Web deps are an `[ui]` extra
+  (`fastapi`/`uvicorn`/`sse-starlette`, replacing the old `gradio`), lazy-imported in `webui/` so the core
+  stays import-light. The one-shot `app` service is unchanged.
+- **SPA built OFF-server; `frontend/dist/` committed (egress reality).** First server build failed at
+  `npm install` with ECONNRESET — the deploy server's egress allows GitHub/HF/PyPI/container registries but
+  **NOT the npm registry**, so a node build stage can't run on-server. So `Dockerfile.web` is Python-only
+  (PyPI works) and just copies the prebuilt bundle; the SPA is built on a box with npm + internet (dev
+  machine) and its `frontend/dist/` is committed (≈320 KB; minified JS/CSS, no secrets — fine for a public
+  repo). Mirrors the repo's existing "tolerate-unreachable-CDN" stance (cf. the Playwright/crawl4ai chromium
+  CDN). Side effect: **dropped `mermaid`** (≈2.7 MB of diagram code for a 5-node stepper) in favour of a
+  tiny custom CSS diagram — keeps the committed dist small. Rebuild + recommit dist after frontend changes.
 - **Status:** Phase 1 (event seam + live run stream + diagram + history) first; Phase 2 (prompt/param
   editors + clarify seam); Phase 3 deferred = a replay/demo mode that re-streams a finished run's events
   from its run-folder files over the same SSE channel.

@@ -47,10 +47,13 @@ Each run writes `artifacts/<id>-l|-m/` — start at `00_INDEX.md`, then `report.
 ### Web UI (optional)
 
 A browser UI (FastAPI + a React SPA) wraps the same headless contract — **presentation/control only, no
-pipeline logic**. Scope and launch a run, watch it live (a pipeline diagram that lights up + a URL/event/
-token feed + the report streaming in), prompt-engineer any prompt, tune the non-secret knobs, and browse
-past runs. The SPA is **built off-server** (the server's egress blocks npm) and its `frontend/dist/` is
-committed, so the server image is Python-only:
+pipeline logic**. A chatbot-style sidebar lists past runs; a guided New-run flow (mode + thoroughness as
+pill toggles) starts one; the run page shows a plain-language live pipeline diagram (friendly node names +
+phase banner + "who's doing what" caption), then **Results** (report / reference repos / comparison) and
+**Behind-the-scenes** (delegations / fetch ledger + event log / files) accordions. **Stop** a live run or
+**Resume** a truncated one; toggle **light/dark**; prompt-engineer any prompt, tune the non-secret knobs,
+and view the egress allowlist — all from Settings. The SPA is **built off-server** (the server's egress
+blocks npm) and its `frontend/dist/` is committed, so the server image is Python-only:
 
 ```bash
 # only when frontend/ changes — on any box with npm + internet, then commit frontend/dist:
@@ -79,8 +82,10 @@ targets `config/pipeline.yaml` + `config/prompts/` only — never `.env`. See **
 - **Crash-resume** ✅ checkpointed runs + auto-retry + `--resume` / `--list` / `--clean` / `--resume-all`.
 - **Observability** ✅ optional self-hosted Langfuse (`AER_TRACING`, off by default; backend in the sibling
   [`service-depot`](../service-depot) repo).
-- **Web UI** ✅ built — FastAPI control layer + SSE live-event stream + React SPA (`webui/` + `frontend/`).
-  Server image build + the pytest suite are green on-prem; live run-through is the remaining validation step.
+- **Web UI** ✅ built + demo-hardened — FastAPI control layer + SSE live-event stream + React SPA
+  (`webui/` + `frontend/`): sidebar of past runs, plain-language live diagram, Results/Behind-the-scenes
+  accordions, web Stop/Resume, light/dark. Server image build + the pytest suite are green on-prem; live
+  run-through is the remaining validation step.
 
 ## Data hygiene
 Public-assumed repo. Server IPs, hostnames, served-model ids, NFS/model paths, and keys live ONLY in the

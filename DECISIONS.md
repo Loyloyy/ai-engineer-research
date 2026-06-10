@@ -590,6 +590,25 @@ seeds a slot, and runs the existing `core.resume_research()` in the worker; `POS
 clears any lingering "running" node on `done`/`error` (fixes the "subagent stuck blue after a truncated
 run" symptom that left no report). Rebuild + recommit `frontend/dist/` as usual.
 
+## Web UI rounds 3–5 — diagram/sidebar/form polish + bigger type (2026-06-10)
+Further demo refinements (all frontend unless noted). **Round 3:** removed the sidebar per-row Resume
+button (resume from inside a session via the no-report banner) + added session dividers; legend "idle" →
+"on standby" and dropped the Specialist footnote; **the Lead box no longer glows after a run finishes** —
+`Diagram` gained a `finished` prop (running is cleared on done, so without it the Lead fell back to the
+blue "active" state forever); the live caption now reads **`<actor> — <action>`** where actor mirrors the
+lit node (1 helper → its name, 0 → Research Director, >1 → "Helpers"; lean → "Researcher") and tool names
+are mapped to plain English — a cheap, honest attribution that needs no per-event backend tagging (the
+deferred "item 4"); friendly-name map factored into shared `frontend/src/agents.ts`; the **Report** is its
+own controlled accordion that auto-opens on finish; delegations renamed "Director's instructions to
+helpers". **Round 4:** the new-run form's mode + thoroughness are now **segmented pill toggles**
+(`Segmented.tsx`) each with a one-line description (same `multi_agent`/`thoroughness` POST — no API
+change); the six run-page panels are grouped under two labeled sections — **Results** (Report / Reference
+implementations / Comparison table) and **Behind the scenes** (Director's instructions / Fetch ledger +
+Event log / Run files). **Round 5:** global type scale-up (base 16→18px, every component size bumped
+proportionally) for lecture-theatre legibility; ran a data-hygiene sweep of tracked files (no IPs, keys,
+served-model ids or internal paths — only the sanctioned `host.docker.internal` / `searxng` placeholders;
+`.env`/override + `artifacts/` stay gitignored). Rebuild + recommit `frontend/dist/`.
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

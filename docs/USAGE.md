@@ -222,10 +222,16 @@ dependency on the stack.
 
 ### The web UI (optional)
 
-A browser UI wraps the same headless contract (it holds **no** pipeline logic — rule #2 above): scope and
-launch a run, watch it live (a pipeline diagram that lights up per stage/subagent + a technical event / URL /
-token feed + the report streaming in), prompt-engineer any prompt, tune the non-secret knobs, and browse
-past runs. It's a long-running FastAPI service + a built React SPA, served on port 8000.
+A browser UI wraps the same headless contract (it holds **no** pipeline logic — rule #2 above). A
+chatbot-style **sidebar** lists past runs (and New run / Settings / a light–dark toggle); the **New-run**
+flow is a guided stepper with mode + thoroughness as pill toggles. The **run page** is a single scrollable
+view: a plain-language live pipeline **diagram** (friendly node names — Research Director / Code Finder /
+Market Mapper / Reality Checker / Specialist — a phase banner and a "who's doing what" caption), then a
+**Results** section (Report, Reference implementations, Comparison table) and a **Behind-the-scenes**
+section (Director's instructions, Fetch ledger + Event log, Run files) as accordions. You can **Stop** a
+live run and **Resume** a truncated one, prompt-engineer any prompt, tune the non-secret knobs, and view
+the (read-only) egress allowlist. It's a long-running FastAPI service + a built React SPA, served on port
+8000.
 
 The SPA is **built off-server** and its `frontend/dist/` is committed — the deploy server's egress blocks
 the npm registry, so the image can't `npm install`. Rebuild the bundle on any box with npm + internet (e.g.

@@ -28,13 +28,16 @@ built & validated** (checkpointed runs + auto-retry + `--resume`/`--list`/`--cle
 "Run checkpointing + resume" entry in `DECISIONS.md`). **Observability built** (optional self-hosted Langfuse
 via `tracing.py`; backend in the sibling `service-depot` repo; locally validated, server trace-check pending).
 SearXNG + Langfuse now live in the sibling **`service-depot`** repo (shared services); the app reaches them
-over `depot-net` — bring depot up first. **Web UI built** (FastAPI control/presentation layer in `webui/`
-wrapping the contract + an SSE live-event stream; React/Vite SPA in `frontend/`; served by the `web` compose
-service via `Dockerfile.web`, reach over an SSH tunnel; see the "Web UI" entry in `DECISIONS.md`). **The SPA
-is built OFF-server (npm is egress-blocked) and `frontend/dist/` is committed**; rebuild + recommit it after
-any `frontend/` change (`cd frontend && npm install && npm run build`). Server image build + the `tests/`
-pytest suite are green on-prem; live run-through (esp. multi-agent delegation labels) is the remaining
-validation step. Only reachability-gated work remains besides that: Context7 MCP if/when
+over `depot-net` — bring depot up first. **Web UI built + demo-hardened** (FastAPI control/presentation
+layer in `webui/` wrapping the contract + an SSE live-event stream; React/Vite SPA in `frontend/`; served
+by the `web` compose service via `Dockerfile.web`, reach over an SSH tunnel; see the "Web UI" entries in
+`DECISIONS.md`). Iterated for a lecture-theatre demo: chatbot-style sidebar of past runs, plain-language
+live diagram (friendly node names + phase banner + caption), Results/Behind-the-scenes accordions, web
+**Stop/Resume** (`POST /api/runs/{id}/stop|resume`; cooperative cancel via a `_StopCallback` in `agent.py`),
+light/dark themes, and a read-only egress allowlist in Settings. **The SPA is built OFF-server (npm is
+egress-blocked) and `frontend/dist/` is committed**; rebuild + recommit it after any `frontend/` change
+(`cd frontend && npm install && npm run build`). Server image build + the `tests/` pytest suite are green
+on-prem; live run-through (esp. multi-agent delegation labels) is the remaining validation step. Only reachability-gated work remains besides that: Context7 MCP if/when
 `context7.com` becomes reachable. See `DECISIONS.md` for the full log, `DEV_NOTES.md` for gotchas/learnings, `docs/STAGE3_CONTRACT.md`
 for the Stage 2→3 handoff.
 

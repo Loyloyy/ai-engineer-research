@@ -117,69 +117,77 @@ export default function RunView({ runId, mode, live, onResume }: Props) {
         <FetchSummary urls={s.urls} />
       </div>
 
-      <div className="accordions">
-        {noReport ? (
-          <div className="card no-report">
-            <strong>No report was produced.</strong>{" "}
-            <span className="muted">
-              This run {outcome === "stopped" ? "was stopped" : "ended early"} before the report was written.
-              You can resume it to continue from where it left off.
-            </span>
-            <div className="actions">
-              <button onClick={onResume}>▸ Resume run</button>
+      <section className="result-section">
+        <div className="section-head">Results</div>
+        <div className="accordions">
+          {noReport ? (
+            <div className="card no-report">
+              <strong>No report was produced.</strong>{" "}
+              <span className="muted">
+                This run {outcome === "stopped" ? "was stopped" : "ended early"} before the report was written.
+                You can resume it to continue from where it left off.
+              </span>
+              <div className="actions">
+                <button onClick={onResume}>▸ Resume run</button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <Accordion title="Report" open={reportOpen} onToggle={setReportOpen}>
-            {report ? <ReportView markdown={report} /> : <Loading label="awaiting report…" />}
+          ) : (
+            <Accordion title="Report" open={reportOpen} onToggle={setReportOpen}>
+              {report ? <ReportView markdown={report} /> : <Loading label="awaiting report…" />}
+            </Accordion>
+          )}
+
+          {repos.length > 0 && (
+            <Accordion title="Reference implementations" count={repos.length}>
+              <ReferenceRepos repos={repos} />
+            </Accordion>
+          )}
+
+          {s.files?.comparison && (
+            <Accordion title="Comparison table">
+              <ReportView markdown={s.files.comparison} />
+            </Accordion>
+          )}
+        </div>
+      </section>
+
+      <section className="result-section">
+        <div className="section-head">Behind the scenes</div>
+        <div className="accordions">
+          <Accordion title="Director's instructions to helpers" count={s.delegations.length || undefined}>
+            <p className="muted small">The custom instruction the Research Director wrote for each helper this run.</p>
+            <SubagentTree delegations={s.delegations} />
           </Accordion>
-        )}
 
-        {repos.length > 0 && (
-          <Accordion title="Reference implementations" count={repos.length}>
-            <ReferenceRepos repos={repos} />
-          </Accordion>
-        )}
-
-        <Accordion title="Director's instructions to helpers" count={s.delegations.length || undefined}>
-          <p className="muted small">The custom instruction the Research Director wrote for each helper this run.</p>
-          <SubagentTree delegations={s.delegations} />
-        </Accordion>
-
-        <Accordion title="Fetch ledger & Event log">
-          <div className="two-col">
-            <div className="col">
-              <h4>Fetch ledger</h4>
-              <LedgerTable urls={s.urls} />
+          <Accordion title="Fetch ledger & Event log">
+            <div className="two-col">
+              <div className="col">
+                <h4>Fetch ledger</h4>
+                <LedgerTable urls={s.urls} />
+              </div>
+              <div className="col">
+                <h4>Event log</h4>
+                <EventLog log={s.log} />
+              </div>
             </div>
-            <div className="col">
-              <h4>Event log</h4>
-              <EventLog log={s.log} />
-            </div>
-          </div>
-        </Accordion>
-
-        {detail?.files && detail.files.length > 0 && (
-          <Accordion title="Run files" count={detail.files.length}>
-            <ul className="files">
-              {detail.files.map((f) => (
-                <li key={f.name}>
-                  <a href={api.fileUrl(runId, f.name)} target="_blank" rel="noreferrer">
-                    {f.name}
-                  </a>
-                  <span className="muted small"> {f.bytes}b</span>
-                </li>
-              ))}
-            </ul>
           </Accordion>
-        )}
 
-        {s.files?.comparison && (
-          <Accordion title="comparison.md">
-            <ReportView markdown={s.files.comparison} />
-          </Accordion>
-        )}
-      </div>
+          {detail?.files && detail.files.length > 0 && (
+            <Accordion title="Run files" count={detail.files.length}>
+              <ul className="files">
+                {detail.files.map((f) => (
+                  <li key={f.name}>
+                    <a href={api.fileUrl(runId, f.name)} target="_blank" rel="noreferrer">
+                      {f.name}
+                    </a>
+                    <span className="muted small"> {f.bytes}b</span>
+                  </li>
+                ))}
+              </ul>
+            </Accordion>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

@@ -121,6 +121,17 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .checkbox, .select { display: flex; align-items: center; gap: 8px; width: auto; }
 .checkbox input, .select select { width: auto; }
 .actions { display: flex; gap: 10px; margin-top: 12px; }
+
+/* segmented pill toggle (mode / thoroughness) */
+.segmented-wrap { display: flex; flex-direction: column; gap: 6px; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; padding: 3px; background: var(--panel-2); gap: 3px; width: fit-content; }
+.segmented .seg { background: none; color: var(--muted); border: none; padding: 7px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; }
+.segmented .seg.active { background: var(--accent); color: var(--accent-fg); }
+.seg-desc { margin: 0; }
+
+/* run-page section grouping (Results / Behind the scenes) */
+.result-section { margin-top: 18px; }
+.section-head { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; margin: 0 0 8px 2px; }
 .banner { display: flex; align-items: center; justify-content: space-between; }
 
 /* ── run view header ──────────────────────────────────────────────────────── */

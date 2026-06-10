@@ -2,10 +2,26 @@ import { useState } from "react";
 import { api, ApiError } from "../api";
 import Stepper from "./Stepper";
 import Loading from "./Loading";
+import Segmented from "./Segmented";
 
 interface Props {
   onStarted: (runId: string, multiAgent: boolean) => void;
 }
+
+const MODE_OPTIONS = [
+  { value: "lean", label: "Lean", description: "One researcher does the whole job end-to-end — faster and lighter." },
+  {
+    value: "multi",
+    label: "Multi-agent",
+    description: "A Research Director delegates to specialist helpers (Code Finder, Market Mapper, Reality Checker) — more thorough.",
+  },
+];
+
+const THOROUGHNESS_OPTIONS = [
+  { value: "light", label: "Light", description: "Quick pass — fewer sources, fastest." },
+  { value: "standard", label: "Standard", description: "Balanced depth (default)." },
+  { value: "deep", label: "Deep", description: "Exhaustive — more rounds & sources, slowest." },
+];
 
 // The pre-run scoping form: topic + brief + per-run overrides (multi-agent, thoroughness, seed pages),
 // with an optional clarify step (clarify_questions → answers folded into the brief before POST /runs).
@@ -135,19 +151,17 @@ export default function RunForm({ onStarted }: Props) {
         <label>Seed pages (optional — comma/newline separated wiki page ids)</label>
         <textarea value={seedPages} onChange={(e) => setSeedPages(e.target.value)} rows={2} />
       </div>
-      <div className="row">
-        <label className="checkbox">
-          <input type="checkbox" checked={multiAgent} onChange={(e) => setMultiAgent(e.target.checked)} />
-          Multi-agent (lead + code-scout / landscape / maturity)
-        </label>
-        <label className="select">
-          Thoroughness
-          <select value={thoroughness} onChange={(e) => setThoroughness(e.target.value)}>
-            <option value="light">light</option>
-            <option value="standard">standard</option>
-            <option value="deep">deep</option>
-          </select>
-        </label>
+      <div className="field">
+        <label>Mode</label>
+        <Segmented
+          options={MODE_OPTIONS}
+          value={multiAgent ? "multi" : "lean"}
+          onChange={(v) => setMultiAgent(v === "multi")}
+        />
+      </div>
+      <div className="field">
+        <label>Thoroughness</label>
+        <Segmented options={THOROUGHNESS_OPTIONS} value={thoroughness} onChange={setThoroughness} />
       </div>
       <div className="actions">
         <button disabled={!topic.trim() || busy} onClick={doClarify}>

@@ -5,7 +5,6 @@ export default function ReferenceRepos({ repos }: { repos: ReferenceRepo[] }) {
   if (!repos || repos.length === 0) return null;
   return (
     <div className="repos">
-      <h3>Reference implementations</h3>
       {repos.map((r, i) => (
         <div className="repo" key={i}>
           <div className="repo-head">

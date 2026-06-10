@@ -1,14 +1,15 @@
 import type { DelegateEvent } from "../types";
+import { agentName } from "../agents";
 
-// The orchestrator decisions: which subagent the lead delegated to, with the instruction it was given.
+// The Director's hand-offs: which helper it tapped + the instruction it wrote for that helper this run.
 export default function SubagentTree({ delegations }: { delegations: DelegateEvent[] }) {
   if (delegations.length === 0)
-    return <p className="muted">No delegations yet (multi-agent runs show the lead's hand-offs here).</p>;
+    return <p className="muted">No instructions yet (these appear as the Research Director hands out jobs).</p>;
   return (
     <ul className="subagents">
       {delegations.map((d, i) => (
         <li key={i}>
-          <div className="sa-name">→ {d.subagent}</div>
+          <div className="sa-name">→ {agentName(d.subagent)} <span className="muted small">({d.subagent})</span></div>
           <div className="sa-instr muted">{d.instruction}</div>
         </li>
       ))}

@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { RunSummary } from "../types";
 
-// Chatbot-style left sidebar: brand + New run + past-runs list (with Resume on truncated runs) + a
-// footer with Settings and a theme toggle. Collapsible (state owned by App, persisted to localStorage).
+// Chatbot-style left sidebar: brand + New run + past-runs list (a "resumable" pill flags truncated runs;
+// open one and use its Resume banner) + a footer with Settings and a theme toggle. Collapsible (state
+// owned by App, persisted to localStorage).
 interface Props {
   open: boolean;
   theme: "light" | "dark";
@@ -13,7 +14,6 @@ interface Props {
   onToggleTheme: () => void;
   onNewRun: () => void;
   onOpenRun: (id: string) => void;
-  onResume: (run: RunSummary) => void;
   onSettings: () => void;
 }
 
@@ -58,11 +58,6 @@ export default function Sidebar(p: Props) {
                   {r.resumable && <span className="pill warn">resumable</span>}
                 </span>
               </button>
-              {r.resumable && (
-                <button className="link sb-resume" onClick={() => p.onResume(r)}>
-                  ▸ Resume
-                </button>
-              )}
             </li>
           ))}
         </ul>

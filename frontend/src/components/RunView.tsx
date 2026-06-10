@@ -11,6 +11,7 @@ import ReferenceRepos from "./ReferenceRepos";
 import FetchSummary from "./FetchSummary";
 import Accordion from "./Accordion";
 import Loading from "./Loading";
+import { agentName, friendlyAction } from "../agents";
 
 interface Props {
   runId: string;
@@ -25,11 +26,15 @@ export default function RunView({ runId, mode, live, onResume }: Props) {
   const s = useEventStream(live ? runId : null);
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [stopping, setStopping] = useState(false);
+  const [reportOpen, setReportOpen] = useState(true); // open while streaming; force-open on finish
 
   const finished = !live || s.done != null;
   useEffect(() => {
     if (finished) api.runDetail(runId).then(setDetail).catch(() => setDetail(null));
   }, [runId, finished]);
+  useEffect(() => {
+    if (finished) setReportOpen(true);
+  }, [finished]);
 
   const report = s.report || detail?.artifact?.report_markdown || "";
   const repos = detail?.artifact?.reference_repos || [];
@@ -40,6 +45,20 @@ export default function RunView({ runId, mode, live, onResume }: Props) {
 
   // Friendly phase banner: live phase while running, "Complete" once a report exists at the end.
   const phaseLabel = report && finished ? "Complete" : s.phase?.label || (running ? "Starting" : "");
+
+  // Live caption: WHO is doing WHAT. Actor mirrors the lit node (1 helper running → it; none → the
+  // Director orchestrating; many → "Helpers"); lean mode has a single "Researcher".
+  const actor =
+    mode === "lean"
+      ? "Researcher"
+      : s.running.length === 1
+      ? agentName(s.running[0])
+      : s.running.length === 0
+      ? "Research Director"
+      : "Helpers";
+  // Prefer the backend's specific status (carries the query/host); prettify only the generic fallbacks.
+  const action =
+    s.status && !/^Running /.test(s.status) ? s.status : s.lastTool ? friendlyAction(s.lastTool) : s.status || "Working…";
 
   async function doStop() {
     setStopping(true);
@@ -84,9 +103,9 @@ export default function RunView({ runId, mode, live, onResume }: Props) {
         </div>
       )}
 
-      <Diagram mode={mode} leanStage={s.leanStage} running={s.running} engaged={s.engaged} />
+      <Diagram mode={mode} leanStage={s.leanStage} running={s.running} engaged={s.engaged} finished={finished} />
 
-      {running && <div className="caption">{s.status || "Working…"}</div>}
+      {running && <div className="caption">{actor} — {action}</div>}
 
       <div className="panel overview">
         <div className="counters">
@@ -95,9 +114,10 @@ export default function RunView({ runId, mode, live, onResume }: Props) {
           <span className="muted small">~{tokens.toLocaleString()} tokens</span>
           <Deliverables phase={s.phase} />
         </div>
-
         <FetchSummary urls={s.urls} />
+      </div>
 
+      <div className="accordions">
         {noReport ? (
           <div className="card no-report">
             <strong>No report was produced.</strong>{" "}
@@ -110,19 +130,19 @@ export default function RunView({ runId, mode, live, onResume }: Props) {
             </div>
           </div>
         ) : (
-          <>
-            <ReferenceRepos repos={repos} />
-            <h3>Report</h3>
+          <Accordion title="Report" open={reportOpen} onToggle={setReportOpen}>
             {report ? <ReportView markdown={report} /> : <Loading label="awaiting report…" />}
-          </>
+          </Accordion>
         )}
-      </div>
 
-      <div className="accordions">
-        <Accordion title="Subagent delegations" count={s.delegations.length || undefined}>
-          <p className="muted small">
-            What the Research Director actually asked each helper (generated live for this run).
-          </p>
+        {repos.length > 0 && (
+          <Accordion title="Reference implementations" count={repos.length}>
+            <ReferenceRepos repos={repos} />
+          </Accordion>
+        )}
+
+        <Accordion title="Director's instructions to helpers" count={s.delegations.length || undefined}>
+          <p className="muted small">The custom instruction the Research Director wrote for each helper this run.</p>
           <SubagentTree delegations={s.delegations} />
         </Accordion>
 

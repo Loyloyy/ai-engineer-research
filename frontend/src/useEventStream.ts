@@ -21,6 +21,7 @@ export interface RunState {
   connected: boolean;
   status: string;
   leanStage: string;
+  lastTool: string | null; // most recent tool name (for the live "who is doing what" caption)
   phase: PhaseEvent | null; // friendly pipeline phase + which deliverables exist
   running: string[]; // multi-agent subagents currently executing (blue) — between task start & end
   engaged: string[]; // multi-agent subagents that have been delegated to at some point (green once done)
@@ -40,6 +41,7 @@ const EMPTY: RunState = {
   connected: false,
   status: "",
   leanStage: "scope",
+  lastTool: null,
   phase: null,
   running: [],
   engaged: [],
@@ -143,7 +145,7 @@ export function useEventStream(runId: string | null): RunState {
       setState((s) => {
         if (d.phase !== "start") return s;
         const text = d.args_summary ? `${d.name} — ${d.args_summary}` : d.name;
-        return { ...s, log: cap([...s.log, { t: Date.now(), kind: "tool", text }], LOG_CAP) };
+        return { ...s, lastTool: d.name, log: cap([...s.log, { t: Date.now(), kind: "tool", text }], LOG_CAP) };
       })
     );
 

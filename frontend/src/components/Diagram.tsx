@@ -2,15 +2,7 @@
 // the server's egress blocks npm so dist ships in-repo). Lean = a scope→…→report stepper; multi-agent =
 // a Lead box feeding the fixed subagents. Nodes carry FRIENDLY names + a one-line role so a non-technical
 // viewer can follow what each part does. Connectors are a pure-CSS org-chart (see styles.css).
-
-// Friendly identities for the multi-agent roster (item 1: legibility for non-technical viewers).
-const AGENTS: Record<string, { name: string; role: string }> = {
-  lead: { name: "Research Director", role: "Plans the work, hands out jobs, then reconciles findings and writes the report" },
-  "code-scout": { name: "Code Finder", role: "Hunts down real, working code on GitHub & Hugging Face" },
-  landscape: { name: "Market Mapper", role: "Finds the competing tools and compares them" },
-  maturity: { name: "Reality Checker", role: "Digs into bugs, limits and production-readiness" },
-  "focused-investigator": { name: "Specialist", role: "Called in on demand for one specific deep-dive" },
-};
+import { AGENTS, ON_DEMAND } from "../agents";
 
 // Friendlier labels for the lean stepper stages.
 const LEAN: { id: string; label: string }[] = [
@@ -21,13 +13,13 @@ const LEAN: { id: string; label: string }[] = [
   { id: "report", label: "Report" },
 ];
 const SUBAGENTS = ["code-scout", "landscape", "maturity", "focused-investigator"];
-const ON_DEMAND = new Set(["focused-investigator"]);
 
 interface Props {
   mode: "lean" | "multi-agent";
   leanStage: string;
   running: string[]; // subagents currently executing → blue
   engaged: string[]; // subagents that have run → green
+  finished?: boolean; // run ended → nothing should still be glowing
 }
 
 function Node({ id, state }: { id: string; state: string }) {
@@ -46,10 +38,9 @@ function Node({ id, state }: { id: string; state: string }) {
 function Legend() {
   return (
     <div className="legend">
-      <span className="legend-item"><span className="swatch idle" /> idle</span>
+      <span className="legend-item"><span className="swatch idle" /> on standby</span>
       <span className="legend-item"><span className="swatch active" /> running</span>
       <span className="legend-item"><span className="swatch engaged" /> done</span>
-      <span className="legend-item muted small">Specialist runs only when a gap needs it</span>
     </div>
   );
 }
@@ -57,11 +48,13 @@ function Legend() {
 export default function Diagram(p: Props) {
   if (p.mode === "lean") {
     const active = LEAN.findIndex((s) => s.id === p.leanStage);
+    const leanState = (i: number) =>
+      i < active ? "done" : i === active ? (p.finished ? "done" : "active") : "idle";
     return (
       <div className="diagram lean">
         {LEAN.map((s, i) => (
           <div key={s.id} className="step">
-            <div className={`node node-${i === active ? "active" : i < active ? "done" : "idle"}`}>
+            <div className={`node node-${leanState(i)}`}>
               <span className="node-name">{s.label}</span>
             </div>
             {i < LEAN.length - 1 && <span className="arrow">→</span>}
@@ -72,8 +65,8 @@ export default function Diagram(p: Props) {
   }
 
   const nodeState = (n: string) => {
-    // Lead is blue while it's orchestrating (no subagent running), green while waiting on subagents.
-    if (n === "lead") return p.running.length ? "engaged" : "active";
+    // Once the run is finished nothing should still glow — the Lead settles to done (green).
+    if (n === "lead") return p.finished ? "done" : p.running.length ? "engaged" : "active";
     if (p.running.includes(n)) return "active"; // currently executing → blue
     if (p.engaged.includes(n)) return "engaged"; // has run → green
     return "idle";

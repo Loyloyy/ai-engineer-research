@@ -64,7 +64,6 @@ export default function App() {
         onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
         onNewRun={() => setView({ name: "home" })}
         onOpenRun={openHistorical}
-        onResume={resumeRun}
         onSettings={() => setView({ name: "settings" })}
       />
 

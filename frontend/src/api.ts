@@ -41,6 +41,12 @@ export const api = {
 
   activeRun: () => fetch("/api/runs/active").then((r) => json<{ active: ActiveRun | null }>(r)),
 
+  stopRun: (id: string) =>
+    fetch(`/api/runs/${encodeURIComponent(id)}/stop`, { method: "POST" }).then((r) => json<{ ok: boolean }>(r)),
+
+  resumeRun: (id: string) =>
+    fetch(`/api/runs/${encodeURIComponent(id)}/resume`, { method: "POST" }).then((r) => json<{ run_id: string }>(r)),
+
   listRuns: () => fetch("/api/runs").then((r) => json<{ runs: RunSummary[] }>(r)),
 
   runDetail: (id: string) => fetch(`/api/runs/${encodeURIComponent(id)}`).then((r) => json<RunDetail>(r)),

@@ -18,6 +18,7 @@ export default function RunForm({ onStarted }: Props) {
   const [questions, setQuestions] = useState<string[] | null>(null);
   const [answers, setAnswers] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [clarifying, setClarifying] = useState(false); // generating clarifying questions
   const [err, setErr] = useState("");
 
   const seeds = () =>
@@ -29,6 +30,7 @@ export default function RunForm({ onStarted }: Props) {
   async function doClarify() {
     setErr("");
     setBusy(true);
+    setClarifying(true);
     try {
       const { questions } = await api.clarify(topic, brief);
       setQuestions(questions);
@@ -38,6 +40,7 @@ export default function RunForm({ onStarted }: Props) {
       setErr(String(e));
     } finally {
       setBusy(false);
+      setClarifying(false);
     }
   }
 
@@ -61,6 +64,25 @@ export default function RunForm({ onStarted }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (clarifying) {
+    return (
+      <div className="runform-wrap step-enter">
+        <Stepper step={1} />
+        <div className="card runform">
+          <h2>Clarify the scope</h2>
+          <p className="muted">
+            <Loading label="Thinking of clarifying questions…" />
+          </p>
+          <div className="skeleton-list">
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line short" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (questions && questions.length > 0) {

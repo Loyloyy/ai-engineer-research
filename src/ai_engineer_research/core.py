@@ -42,6 +42,7 @@ def run_research(
     interactive: bool = False,
     event_callbacks: list | None = None,
     run_id: str | None = None,
+    stop_event=None,
 ) -> tuple[str, DeepResearchArtifact]:
     cfg = config or load_config()
     full_brief = _assemble_brief(topic, brief, seed_pages)
@@ -65,7 +66,7 @@ def run_research(
     # Run the agentic loop (writes report.md / scope.md / reflection.md / coverage.json into the run dir).
     report_md, run_dir, _ = run_gather(
         topic, full_brief, config=cfg, run_id=artifact_id, interactive=interactive,
-        event_callbacks=event_callbacks,
+        event_callbacks=event_callbacks, stop_event=stop_event,
     )
 
     return _finalize(
@@ -80,6 +81,7 @@ def resume_research(
     *,
     config: RunConfig | None = None,
     event_callbacks: list | None = None,
+    stop_event=None,
 ) -> tuple[str, DeepResearchArtifact]:
     """Resume a prior TRUNCATED run from its checkpoint and finalize the artifact.
 
@@ -94,7 +96,7 @@ def resume_research(
     multi_agent = _meta_field(run_id, "multi_agent")
     report_md, run_dir, _ = run_gather(
         topic, brief, config=cfg, run_id=run_id, resume=True, multi_agent=multi_agent,
-        event_callbacks=event_callbacks,
+        event_callbacks=event_callbacks, stop_event=stop_event,
     )
     return _finalize(
         cfg, topic, brief, report_md, run_dir,

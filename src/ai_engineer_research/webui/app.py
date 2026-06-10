@@ -8,6 +8,8 @@ Routes (Phase 1):
   POST /api/clarify            → pre-run clarifying questions
   POST /api/runs               → start the single active run (409 if busy)
   GET  /api/runs/active        → the active run's status (for reconnect)
+  POST /api/runs/{id}/stop     → cooperatively stop the active run
+  POST /api/runs/{id}/resume   → resume a prior truncated run (409 if busy)
   GET  /api/runs/{id}/stream   → SSE live event stream
   GET  /api/runs               → history list
   GET  /api/runs/{id}          → run detail (artifact + coverage + evidence + files + langfuse)
@@ -87,6 +89,21 @@ def create_app():
     @app.get("/api/runs/active")
     def active_run() -> dict:
         return {"active": manager.active()}
+
+    @app.post("/api/runs/{run_id}/stop")
+    def stop_run(run_id: str) -> dict:
+        ok = manager.stop(run_id)
+        if not ok:
+            raise HTTPException(status_code=409, detail="run is not the active running run")
+        return {"ok": True}
+
+    @app.post("/api/runs/{run_id}/resume")
+    def resume_run(run_id: str) -> dict:
+        try:
+            rid = manager.resume(run_id)
+        except RunBusy as e:
+            raise HTTPException(status_code=409, detail=f"a run is already active: {e}") from e
+        return {"run_id": rid}
 
     @app.get("/api/runs/{run_id}/stream")
     async def stream_run(run_id: str):

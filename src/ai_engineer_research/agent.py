@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from pathlib import Path
+
+from langchain_core.callbacks import BaseCallbackHandler
 
 from .artifact import new_artifact_id
 from .cache.store import configure_default_cache
@@ -38,6 +41,38 @@ ARTIFACTS_ROOT = Path("artifacts")
 # scales with AER_THOROUGHNESS: deeper runs make more search/fetch/reflect turns before stopping.
 _RECURSION_BY_THOROUGHNESS = {"light": 120, "standard": 200, "deep": 320}
 _RECURSION_LIMIT = 200  # fallback for an unrecognized thoroughness level
+
+
+class RunStopped(Exception):
+    """Raised inside a callback to cooperatively abort an in-flight run when a Stop is requested."""
+
+
+class _StopCallback(BaseCallbackHandler):
+    """A no-op handler whose only job is to abort the graph promptly when its event is set.
+
+    LangChain callbacks propagate through the whole lead+subagents+tools tree, so checking the event at
+    the next LLM/tool boundary interrupts even mid-subagent (seconds-responsive). raise_error=True tells
+    LangChain to PROPAGATE our RunStopped rather than swallow it, so it unwinds out of agent.invoke;
+    run_gather's except then salvages whatever reached disk and leaves the run resumable.
+    """
+
+    raise_error = True
+
+    def __init__(self, stop_event: threading.Event) -> None:
+        self._stop = stop_event
+
+    def _check(self) -> None:
+        if self._stop.is_set():
+            raise RunStopped()
+
+    def on_chat_model_start(self, *args, **kwargs) -> None:
+        self._check()
+
+    def on_llm_start(self, *args, **kwargs) -> None:
+        self._check()
+
+    def on_tool_start(self, *args, **kwargs) -> None:
+        self._check()
 
 SYSTEM_PROMPT = """You are a meticulous senior technical researcher. Your job: produce a DETAILED, \
 COMPREHENSIVE, well-grounded report a careful engineer would trust to make a build decision. You work \
@@ -262,6 +297,7 @@ def run_gather(
     multi_agent: bool | None = None,
     resume: bool = False,
     event_callbacks: list | None = None,
+    stop_event: threading.Event | None = None,
 ) -> tuple[str, Path, str]:
     """Lead-loop entrypoint. Returns (report_markdown, run_dir, run_id).
 
@@ -320,6 +356,9 @@ def run_gather(
     mode = "multi-agent" if use_multi else "lean"
     tracer = build_tracer()
     callbacks = ([tracer] if tracer is not None else []) + list(event_callbacks or [])
+    # A Stop request aborts at the next LLM/tool boundary (propagates even through subagents).
+    if stop_event is not None:
+        callbacks.append(_StopCallback(stop_event))
     if callbacks:
         invoke_config["callbacks"] = callbacks
     logger.info(
@@ -354,6 +393,11 @@ def run_gather(
                 agent.invoke(payload, config=invoke_config)
                 succeeded = True
                 ledger.truncated = False
+                break
+            except RunStopped:
+                # User-requested Stop: leave the run truncated (→ resumable) and salvage; no retry.
+                ledger.truncated = True
+                logger.info("run %s stopped by request (attempt %d/%d)", run_id, attempt + 1, max_attempts)
                 break
             except Exception as e:  # noqa: BLE001 — salvage/resume instead of crashing the run
                 ledger.truncated = True

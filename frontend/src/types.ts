@@ -1,6 +1,14 @@
 // Backend↔frontend event + domain types. Mirrors webui/events.py + webui/runner.py + artifact/schema.py.
 
 export type StageEvent = { type: "stage"; mode: "lean" | "multi-agent"; node: string; active: boolean };
+export type PhaseEvent = {
+  type: "phase";
+  label: string; // friendly pipeline phase, e.g. "Researching"
+  scope: boolean;
+  reflection: boolean;
+  comparison: boolean;
+  report: boolean;
+};
 export type DelegateEvent = { type: "delegate"; subagent: string; instruction: string };
 export type StatusEvent = { type: "status"; text: string };
 export type ToolEvent = { type: "tool"; name: string; phase: "start" | "end"; args_summary?: string };
@@ -39,6 +47,7 @@ export type ErrorEvent = { type: "error"; message: string };
 
 export type RunEvent =
   | StageEvent
+  | PhaseEvent
   | DelegateEvent
   | StatusEvent
   | ToolEvent

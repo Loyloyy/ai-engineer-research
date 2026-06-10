@@ -6,6 +6,7 @@ import type {
   DoneEvent,
   FilesEvent,
   LlmEvent,
+  PhaseEvent,
   ToolEvent,
   UrlEvent,
 } from "./types";
@@ -20,6 +21,7 @@ export interface RunState {
   connected: boolean;
   status: string;
   leanStage: string;
+  phase: PhaseEvent | null; // friendly pipeline phase + which deliverables exist
   running: string[]; // multi-agent subagents currently executing (blue) — between task start & end
   engaged: string[]; // multi-agent subagents that have been delegated to at some point (green once done)
   delegations: DelegateEvent[];
@@ -38,6 +40,7 @@ const EMPTY: RunState = {
   connected: false,
   status: "",
   leanStage: "scope",
+  phase: null,
   running: [],
   engaged: [],
   delegations: [],
@@ -130,6 +133,8 @@ export function useEventStream(runId: string | null): RunState {
       else removalTimers.set(node, setTimeout(drop, remaining));
     });
 
+    on("phase", (d: PhaseEvent) => setState((s) => ({ ...s, phase: d })));
+
     on("delegate", (d: DelegateEvent) =>
       setState((s) => ({ ...s, delegations: [...s.delegations, d] }))
     );
@@ -163,9 +168,14 @@ export function useEventStream(runId: string | null): RunState {
     on("report", (d) => setState((s) => ({ ...s, report: d.markdown })));
     on("files", (d: FilesEvent) => setState((s) => ({ ...s, files: d })));
     on("heartbeat", (d) => setState((s) => ({ ...s, elapsed: d.elapsed_s })));
-    on("error", (d) => setState((s) => ({ ...s, error: d.message })));
+    on("error", (d) =>
+      setState((s) => ({ ...s, error: d.message, running: [] })) // a failed run leaves no node "running"
+    );
     on("done", (d: DoneEvent) => {
-      setState((s) => ({ ...s, done: d, connected: false }));
+      // Clear any lingering dwell timers + running nodes so a truncated run doesn't leave a node stuck blue.
+      removalTimers.forEach((t) => clearTimeout(t));
+      removalTimers.clear();
+      setState((s) => ({ ...s, done: d, connected: false, running: [] }));
       es.close();
     });
 

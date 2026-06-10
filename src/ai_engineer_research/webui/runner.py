@@ -47,12 +47,13 @@ class _Slot:
     multi_agent: bool
     thoroughness: str
     started_at: float
-    status: str = "running"            # running | done | error
+    status: str = "running"            # running | done | error | stopped
     error: str | None = None
     artifact_summary: dict | None = None
     run_dir: Path = field(default_factory=lambda: ARTIFACTS_ROOT)
     backlog: list[dict] = field(default_factory=list)
     subscribers: list[Queue] = field(default_factory=list)
+    stop_event: threading.Event = field(default_factory=threading.Event)  # set → cooperative Stop
     _sub_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def emit(self, ev: dict) -> None:
@@ -129,22 +130,29 @@ class RunManager:
         logger.info("web run %s started (multi=%s thoroughness=%s)", run_id, slot.multi_agent, slot.thoroughness)
         return run_id
 
-    def _worker(self, slot: _Slot, cfg, seed_pages: list[str]) -> None:
+    def _worker(self, slot: _Slot, cfg, seed_pages: list[str], resume: bool = False) -> None:
         handler = UIEventHandler(slot.emit)
         try:
-            from ..core import run_research  # lazy: pull the agent/langchain stack only when running
+            from ..core import resume_research, run_research  # lazy: pull langchain only when running
 
-            report, artifact = run_research(
-                slot.topic,
-                slot.brief,
-                seed_pages=seed_pages or None,
-                config=cfg,
-                event_callbacks=[handler],
-                run_id=slot.run_id,
-            )
+            if resume:
+                report, artifact = resume_research(
+                    slot.run_id, config=cfg, event_callbacks=[handler], stop_event=slot.stop_event,
+                )
+            else:
+                report, artifact = run_research(
+                    slot.topic,
+                    slot.brief,
+                    seed_pages=seed_pages or None,
+                    config=cfg,
+                    event_callbacks=[handler],
+                    run_id=slot.run_id,
+                    stop_event=slot.stop_event,
+                )
             slot.artifact_summary = self._summary(artifact)
-            slot.status = "done"
-            slot.emit({"type": "status", "text": "Run complete."})
+            stopped = slot.stop_event.is_set()
+            slot.status = "stopped" if stopped else "done"
+            slot.emit({"type": "status", "text": "Run stopped." if stopped else "Run complete."})
         except Exception as e:  # noqa: BLE001 — surface failures to the stream, don't crash the server
             logger.exception("web run %s failed", slot.run_id)
             slot.status = "error"
@@ -152,6 +160,43 @@ class RunManager:
             slot.emit({"type": "error", "message": str(e)})
         finally:
             slot.emit({"type": _END})
+
+    def stop(self, run_id: str) -> bool:
+        """Request a cooperative Stop of the active run. Returns False if it isn't the running run."""
+        slot = self._slot
+        if slot is None or slot.run_id != run_id or slot.status != "running":
+            return False
+        slot.stop_event.set()
+        slot.emit({"type": "status", "text": "Stopping… (wrapping up the current step)"})
+        logger.info("web run %s stop requested", run_id)
+        return True
+
+    def resume(self, run_id: str) -> str:
+        """Resume a prior truncated run in the single slot. Raises RunBusy if one is already active."""
+        with self._lock:
+            if self._slot is not None and self._slot.status == "running":
+                raise RunBusy(self._slot.run_id)
+            cfg = load_config()
+            meta = _read_meta(run_id)
+            multi = bool(meta.get("multi_agent", False))
+            slot = _Slot(
+                run_id=run_id,
+                topic=str(meta.get("topic", "")),
+                brief=str(meta.get("brief", "")),
+                multi_agent=multi,
+                thoroughness=cfg.thoroughness,
+                started_at=time.time(),
+                run_dir=ARTIFACTS_ROOT / run_id,
+            )
+            slot.emit(
+                {"type": "stage", "mode": "multi-agent" if multi else "lean",
+                 "node": "lead" if multi else "scope", "active": True}
+            )
+            self._slot = slot
+
+        self._executor.submit(self._worker, slot, cfg, [], True)
+        logger.info("web run %s resuming (multi=%s)", run_id, multi)
+        return run_id
 
     @staticmethod
     def _summary(artifact) -> dict:
@@ -204,6 +249,7 @@ class RunManager:
             ledger_seen = 0
             last_report = ""
             last_lean_stage = ""
+            last_phase: dict | None = None
             last_heartbeat = 0.0
             ended = False
 
@@ -242,6 +288,11 @@ class RunManager:
                     if stage != last_lean_stage:
                         last_lean_stage = stage
                         yield _frame({"type": "stage", "mode": "lean", "node": stage, "active": True})
+                # friendly phase + deliverables (both modes) — drives the plain-language banner
+                phase = _derive_phase(slot.run_dir, attempts, slot.multi_agent)
+                if phase != last_phase:
+                    last_phase = phase
+                    yield _frame({"type": "phase", **phase})
 
                 # 4) heartbeat
                 now = time.time()
@@ -271,6 +322,8 @@ class RunManager:
     async def _snapshot_stream(self, run_id: str) -> AsyncIterator[dict]:
         """For a non-active (finished/historical) run: emit its report once, then done."""
         run_dir = ARTIFACTS_ROOT / run_id
+        multi = bool(_read_meta(run_id).get("multi_agent", False))
+        yield _frame({"type": "phase", **_derive_phase(run_dir, [], multi)})
         report = _read(run_dir, "report.md")
         if report:
             yield _frame({"type": "report", "markdown": report})
@@ -316,6 +369,39 @@ def _read_working_files(run_dir: Path) -> dict | None:
     if not (scope or reflection or comparison or notes):
         return None
     return {"scope": scope, "reflection": reflection, "comparison": comparison, "notes": notes}
+
+
+def _read_meta(run_id: str) -> dict:
+    """run_meta.json for a run (topic/brief/multi_agent), or {} if absent/unreadable."""
+    try:
+        return json.loads((ARTIFACTS_ROOT / run_id / "run_meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _derive_phase(run_dir: Path, attempts: list[dict], multi_agent: bool) -> dict:
+    """Plain-language pipeline phase + which deliverables exist yet — derived from run-folder files.
+
+    Maps the lead's SCOPE→…→SYNTHESIZE arc to friendly labels a non-technical viewer can follow. Pure
+    file/ledger inspection (no agent signal), same approach as `_derive_lean_stage`."""
+    scope = (run_dir / "scope.md").is_file()
+    reflection = (run_dir / "reflection.md").is_file()
+    comparison = (run_dir / "comparison.md").is_file()
+    report = bool(_read(run_dir, "report.md"))
+    notes_dir = run_dir / "notes"
+    researching = bool(attempts) or (notes_dir.is_dir() and any(notes_dir.glob("*.md")))
+    if report or comparison:
+        label = "Writing the report"
+    elif reflection:
+        label = "Cross-checking findings"
+    elif researching:
+        label = "Researching"
+    elif scope:
+        label = "Planning"
+    else:
+        label = "Starting"
+    return {"label": label, "scope": scope, "reflection": reflection,
+            "comparison": comparison, "report": report}
 
 
 def _derive_lean_stage(run_dir: Path, attempts: list[dict]) -> str:

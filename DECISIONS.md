@@ -564,6 +564,32 @@ in the UI; it calls `run_research`/`resume_research` and renders events.
   arg keys are inferred in `events.py`). Phase 3 deferred = a replay/demo mode that re-streams a finished
   run's events from its run-folder files over the same SSE channel.
 
+## Web UI round 2 — demo legibility + Stop/Resume over the web (2026-06-10)
+Post-first-demo polish for a lecture-theatre audience. **Shell:** chatbot-style collapsible left
+**sidebar** (past runs + New run + Settings + theme toggle) replacing the topbar nav; **light theme is now
+the default** with a dark toggle (vars on `<html data-theme>`); the old "present" toggle is gone — larger
+sizing is just the default. **Diagram legibility (non-technical viewers):** friendly node identities
+(Lead→"Research Director", code-scout→"Code Finder", landscape→"Market Mapper", maturity→"Reality
+Checker", focused-investigator→"Specialist"); a plain-language **phase banner** (Planning→Researching→
+Cross-checking→Writing report→Complete) + a **deliverables** strip + a live **caption**, all derived in
+`runner.py` via a new `_derive_phase()` → a `phase` SSE event `{label, scope, reflection, comparison,
+report}` (same file-presence heuristic as `_derive_lean_stage`, both modes). Connectors rewritten as a
+per-branch CSS org-chart (rail built from trimmed per-branch segments, `gap:0`) so the rail meets every
+node center with no overhang (the v1 fixed-percent rail didn't line up). Delegations moved to a closed
+accordion; fetch ledger + event log combined into one two-column accordion (ledger's counter row dropped —
+the FetchSummary already carries those numbers — so the two tables align).
+**Stop (cooperative cancellation):** a `_StopCallback(BaseCallbackHandler, raise_error=True)` in `agent.py`
+raises `RunStopped` on the next LLM/tool callback when a `threading.Event` is set — because callbacks
+propagate through the whole lead+subagents tree, this interrupts even mid-subagent (seconds-responsive);
+`run_gather`'s except then salvages partial output and leaves the run truncated→resumable. Threaded
+`stop_event` through `core.run_research`/`resume_research` → `run_gather`; `RunManager._Slot.stop_event` +
+`RunManager.stop()` + `POST /api/runs/{id}/stop`; the slot ends as status `stopped`.
+**Resume over the web:** `RunManager.resume()` recovers topic/brief/multi_agent from `run_meta.json`,
+seeds a slot, and runs the existing `core.resume_research()` in the worker; `POST /api/runs/{id}/resume`
+(409 if busy); a **Resume** button on resumable sidebar rows and on the no-report banner. Frontend also
+clears any lingering "running" node on `done`/`error` (fixes the "subagent stuck blue after a truncated
+run" symptom that left no report). Rebuild + recommit `frontend/dist/` as usual.
+
 ## Carried over from the GPTR repo (port + adapt)
 Artifact schema/store/validate/extract (the Stage 2→3 contract); SearXNG search, Crawl4AI extract,
 cross-encoder rerank — now first-class **LangChain tools**, not GPTR injections; cache; eval golden-set

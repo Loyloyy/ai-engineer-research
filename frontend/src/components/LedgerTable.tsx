@@ -1,14 +1,10 @@
-import type { CoverageEvent, UrlEvent } from "../types";
+import type { UrlEvent } from "../types";
 
-// The live fetch ledger: url · host · ✓/✗ · outcome, plus the reachable counter from coverage.
-export default function LedgerTable({ urls, coverage }: { urls: UrlEvent[]; coverage: CoverageEvent | null }) {
+// The live fetch ledger: url · host · ✓/✗ · outcome. (The reachable/blocked counts live in the
+// FetchSummary now, so the two technical tables line up at the same level inside one accordion.)
+export default function LedgerTable({ urls }: { urls: UrlEvent[] }) {
   return (
     <div className="ledger">
-      <div className="counter">
-        <span className="ok">✓ {coverage?.fetched_ok ?? 0} reachable</span>
-        <span className="bad">✗ {coverage?.blocked_or_failed ?? 0} blocked/failed</span>
-        <span className="muted">{coverage?.fetch_attempts ?? urls.length} attempts</span>
-      </div>
       <table>
         <thead>
           <tr>

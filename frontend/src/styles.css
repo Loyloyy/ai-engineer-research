@@ -83,22 +83,47 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 .pill.lean { color: #93c5fd; }
 .pill.warn { color: var(--warn); }
 
-.diagram { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; overflow-x: auto; }
-.diagram.lean { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.diagram { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 22px 18px; overflow-x: auto; }
+.diagram.lean { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; }
 .diagram.lean .step { display: flex; align-items: center; gap: 4px; }
-.diagram.lean .arrow { color: var(--muted); margin: 0 6px; }
+.diagram.lean .arrow { color: var(--muted); margin: 0 8px; font-size: 1.2em; }
 .diagram.multi { display: flex; flex-direction: column; align-items: center; gap: 0; }
-.diagram.multi .fanout { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
-.diagram.multi .branch { display: flex; flex-direction: column; align-items: center; }
-.diagram.multi .connector { width: 2px; height: 18px; background: var(--border); }
+
+/* Multi-agent connectors as a pure-CSS org-chart: a stem from Lead down to a horizontal rail across the
+   fanout, then a short vertical drop into each subagent. No graph lib, no measurement. */
+.diagram.multi .stem { width: 2px; height: 22px; background: var(--border); }
+.diagram.multi .fanout {
+  position: relative; display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; padding-top: 22px;
+}
+.diagram.multi .fanout::before { /* horizontal rail */
+  content: ""; position: absolute; top: 0; left: 12%; right: 12%; height: 2px; background: var(--border);
+}
+.diagram.multi .branch { position: relative; display: flex; flex-direction: column; align-items: center; }
+.diagram.multi .branch::before { /* vertical drop from rail into this node */
+  content: ""; position: absolute; top: -22px; left: 50%; width: 2px; height: 22px; background: var(--border);
+}
 .node {
-  padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; white-space: nowrap;
+  position: relative; padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; white-space: nowrap;
   border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); transition: all 0.2s;
 }
-.node-active { background: var(--accent); color: #fff; border-color: #93c5fd; box-shadow: 0 0 10px rgba(59,130,246,0.5); }
-.node-done { background: #1f3a2e; color: #9fe3bf; border-color: #3f6d54; }
-.node-engaged { background: #1f3a2e; color: #9fe3bf; border-color: #3f6d54; }
-.node-idle { opacity: 0.7; }
+.node-hint { display: block; font-size: 0.7em; font-weight: 400; opacity: 0.8; margin-top: 1px; }
+.node-active {
+  background: var(--accent); color: #fff; border-color: #93c5fd; animation: node-pulse 1.6s ease-in-out infinite;
+}
+.node-done, .node-engaged { background: #1f3a2e; color: #9fe3bf; border-color: #3f6d54; }
+.node-idle { opacity: 0.55; border-style: dashed; }
+@keyframes node-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(59,130,246,0.45); }
+  50% { box-shadow: 0 0 16px 2px rgba(59,130,246,0.85); }
+}
+
+/* diagram legend */
+.legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-top: 16px; font-size: 12px; color: var(--muted); }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); display: inline-block; }
+.legend .swatch.idle { background: var(--panel-2); border-style: dashed; opacity: 0.7; }
+.legend .swatch.active { background: var(--accent); border-color: #93c5fd; }
+.legend .swatch.engaged { background: #1f3a2e; border-color: #3f6d54; }
 
 .tabs { display: flex; gap: 6px; margin: 16px 0 12px; }
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
@@ -155,3 +180,88 @@ textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; fon
 /* editors */
 .editor textarea { margin-bottom: 12px; }
 .readonly { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; white-space: pre-wrap; font-size: 12px; color: var(--muted); max-height: 320px; overflow-y: auto; }
+
+/* ── loading dots (the "working…" feedback) ───────────────────────────────── */
+.loading { display: inline-flex; align-items: center; gap: 8px; }
+.loading-dots { display: inline-flex; gap: 4px; }
+.loading-dots span {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.85;
+  animation: dot-jump 1s ease-in-out infinite;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.15s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.3s; }
+.loading-label { color: var(--muted); font-size: 0.9em; }
+@keyframes dot-jump {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+  40% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ── stepper (Topic → Clarify → Run) ──────────────────────────────────────── */
+.stepper { display: flex; align-items: center; justify-content: center; gap: 0; list-style: none; padding: 0; margin: 0 0 18px; }
+.stepper-step { display: flex; align-items: center; color: var(--muted); font-size: 13px; gap: 8px; }
+.stepper-dot {
+  width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid var(--border); background: var(--panel-2); font-size: 12px; font-weight: 700; flex: none; transition: all 0.2s;
+}
+.stepper-rail { width: 48px; height: 2px; background: var(--border); margin: 0 12px; }
+.stepper-step.active { color: var(--fg); }
+.stepper-step.active .stepper-dot { border-color: var(--accent); background: var(--accent); color: #fff; box-shadow: 0 0 10px rgba(59,130,246,0.5); }
+.stepper-step.done { color: var(--ok); }
+.stepper-step.done .stepper-dot { border-color: #3f6d54; background: #1f3a2e; color: #9fe3bf; }
+
+/* ── step transition (fade/slide between flow stages) ─────────────────────── */
+.step-enter { animation: step-in 0.32s ease both; }
+@keyframes step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── run view band + accordions ───────────────────────────────────────────── */
+.run-band { margin-bottom: 18px; }
+.run-band .col h3 { margin-top: 0; }
+.runview .panel.overview { margin-bottom: 18px; }
+.runhead .langfuse { margin-left: auto; }
+
+.accordions { display: flex; flex-direction: column; gap: 12px; }
+.accordion { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 0 18px; }
+.accordion > summary {
+  cursor: pointer; list-style: none; padding: 14px 0; display: flex; align-items: center; gap: 10px;
+  font-weight: 600; color: var(--fg);
+}
+.accordion > summary::-webkit-details-marker { display: none; }
+.accordion > summary::before { content: "▸"; color: var(--muted); transition: transform 0.2s; }
+.accordion[open] > summary::before { transform: rotate(90deg); }
+.accordion-count { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+.accordion-body { padding: 0 0 16px; }
+
+/* ── fetch pass/fail summary ──────────────────────────────────────────────── */
+.fetch-summary { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.fs-group { display: flex; flex-direction: column; gap: 6px; }
+.fs-head { font-size: 13px; font-weight: 600; }
+.fs-head.ok { color: var(--ok); }
+.fs-head.bad { color: var(--bad); }
+.fs-head .fs-n { color: var(--muted); font-weight: 400; }
+.fs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fs-chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); }
+.fs-chip.ok { color: #9fe3bf; border-color: #3f6d54; }
+.fs-chip.bad { color: #f6b6b6; border-color: #6d3f3f; }
+
+/* ── egress allowlist panel ───────────────────────────────────────────────── */
+.egress-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* ── presentation mode (lecture-theatre scale) ────────────────────────────── */
+.present-toggle.active { color: var(--fg) !important; background: var(--accent) !important; border-color: #93c5fd !important; }
+.app.present { max-width: 1680px; font-size: 19px; }
+.app.present .topbar nav button:not(.present-toggle) { display: none; }
+.app.present .runview .link { display: none; }
+.app.present .node { padding: 14px 24px; font-size: 21px; border-radius: 10px; }
+.app.present .diagram { padding: 34px 26px; }
+.app.present .diagram.multi .stem,
+.app.present .diagram.multi .fanout { padding-top: 34px; }
+.app.present .diagram.multi .stem { height: 34px; }
+.app.present .diagram.multi .branch::before { top: -34px; height: 34px; }
+.app.present .diagram.multi .fanout { gap: 34px; }
+.app.present .legend { font-size: 16px; gap: 22px; }
+.app.present .stepper-dot { width: 34px; height: 34px; font-size: 16px; }
+.app.present .stepper-rail { width: 70px; }
+.app.present .stepper-step { font-size: 17px; }
+.app.present h3 { font-size: 1.3em; }
+.app.present .markdown { line-height: 1.7; }
+.app.present .fs-chip, .app.present .badge { font-size: 15px; padding: 4px 12px; }

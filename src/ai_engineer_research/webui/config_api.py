@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel
 
 from ..config import ROOT, load_config
+from ..domains import reachable_domains
 from ..prompts import PROMPT_NAMES, load_prompt, prompts_dir
 
 logger = logging.getLogger(__name__)
@@ -170,6 +171,12 @@ def register_config_routes(app) -> None:
         except OSError as e:
             raise HTTPException(status_code=500, detail=f"could not write override: {e}") from e
         return {"ok": True, "has_override": _has_override(name)}
+
+    @app.get("/api/egress")
+    def get_egress() -> dict:
+        # Read-only: the preferred-source allowlist (public dev domains only — no .env, no internal
+        # hosts/IPs). Surfaced so the UI can show which sources the agent will actually try to fetch.
+        return {"domains": list(reachable_domains())}
 
     @app.get("/api/params")
     def get_params() -> dict:

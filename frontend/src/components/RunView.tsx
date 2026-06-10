@@ -8,6 +8,10 @@ import LedgerTable from "./LedgerTable";
 import EventLog from "./EventLog";
 import SubagentTree from "./SubagentTree";
 import ReferenceRepos from "./ReferenceRepos";
+import FetchSummary from "./FetchSummary";
+import Accordion from "./Accordion";
+import Loading from "./Loading";
+import Stepper from "./Stepper";
 
 interface Props {
   runId: string;
@@ -16,9 +20,10 @@ interface Props {
   onBack: () => void;
 }
 
+// Single-page run view (no tabs): a live diagram + delegations band on top, the report below, and the
+// technical detail (fetch ledger, event log, files) tucked into collapsed accordions.
 export default function RunView({ runId, mode, live, onBack }: Props) {
   const s = useEventStream(live ? runId : null);
-  const [tab, setTab] = useState<"overview" | "technical">("overview");
   const [detail, setDetail] = useState<RunDetail | null>(null);
 
   // Load the polished artifact: immediately for a historical run, and once a live run finishes.
@@ -30,9 +35,11 @@ export default function RunView({ runId, mode, live, onBack }: Props) {
   const report = s.report || detail?.artifact?.report_markdown || "";
   const repos = detail?.artifact?.reference_repos || [];
   const running = live && !s.done;
+  const tokens = s.tokens.prompt + s.tokens.completion;
 
   return (
-    <div className="runview">
+    <div className="runview step-enter">
+      {live && <Stepper step={2} />}
       <header className="runhead">
         <button className="link" onClick={onBack}>
           ← back
@@ -43,77 +50,69 @@ export default function RunView({ runId, mode, live, onBack }: Props) {
           <span className="status-line">
             <span className={`dot ${s.connected ? "live" : "off"}`} />
             {s.status || "working…"} · {s.elapsed.toFixed(0)}s
+            <Loading />
           </span>
         ) : (
           <span className="status-line">{s.done?.status || "finished"}</span>
         )}
+        {detail?.langfuse_host && (
+          <a className="link langfuse" href={detail.langfuse_host} target="_blank" rel="noreferrer">
+            ↗ Langfuse{detail.langfuse_session_id ? ` (${detail.langfuse_session_id})` : ""}
+          </a>
+        )}
         {s.error && <span className="error">{s.error}</span>}
       </header>
 
-      <Diagram mode={mode} leanStage={s.leanStage} running={s.running} engaged={s.engaged} />
-
-      <nav className="tabs">
-        <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>
-          Overview
-        </button>
-        <button className={tab === "technical" ? "active" : ""} onClick={() => setTab("technical")}>
-          Technical
-        </button>
-      </nav>
-
-      {tab === "overview" ? (
-        <div className="panel overview">
-          <div className="counters">
-            <span className="ok">✓ {s.coverage?.fetched_ok ?? 0}</span>
-            <span className="bad">✗ {s.coverage?.blocked_or_failed ?? 0}</span>
-            <span className="muted">tokens ~{(s.tokens.prompt + s.tokens.completion).toLocaleString()}</span>
-          </div>
-          <ReferenceRepos repos={repos} />
-          <h3>Report</h3>
-          <ReportView markdown={report} />
+      {/* Top band: the live pipeline + the lead's delegations side by side. */}
+      <div className="run-band two-col">
+        <div className="col">
+          <Diagram mode={mode} leanStage={s.leanStage} running={s.running} engaged={s.engaged} />
         </div>
-      ) : (
-        <div className="panel technical two-col">
-          <div className="col">
-            <h3>Fetch ledger</h3>
-            <LedgerTable urls={s.urls} coverage={s.coverage} />
-            <h3>Subagent delegations</h3>
-            <SubagentTree delegations={s.delegations} />
-            {detail?.langfuse_host && (
-              <p>
-                <a className="link" href={detail.langfuse_host} target="_blank" rel="noreferrer">
-                  Open Langfuse (session {detail.langfuse_session_id})
-                </a>
-              </p>
-            )}
-          </div>
-          <div className="col">
-            <h3>Event log</h3>
-            <EventLog log={s.log} />
-            {detail?.files && detail.files.length > 0 && (
-              <>
-                <h3>Run files</h3>
-                <ul className="files">
-                  {detail.files.map((f) => (
-                    <li key={f.name}>
-                      <a href={api.fileUrl(runId, f.name)} target="_blank" rel="noreferrer">
-                        {f.name}
-                      </a>
-                      <span className="muted small"> {f.bytes}b</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            {s.files?.comparison && (
-              <>
-                <h3>comparison.md</h3>
-                <ReportView markdown={s.files.comparison} />
-              </>
-            )}
-          </div>
+        <div className="col">
+          <h3>Subagent delegations</h3>
+          <SubagentTree delegations={s.delegations} />
         </div>
-      )}
+      </div>
+
+      <div className="panel overview">
+        <div className="counters">
+          <span className="ok">✓ {s.coverage?.fetched_ok ?? 0}</span>
+          <span className="bad">✗ {s.coverage?.blocked_or_failed ?? 0}</span>
+          <span className="muted">tokens ~{tokens.toLocaleString()}</span>
+        </div>
+        <FetchSummary urls={s.urls} />
+        <ReferenceRepos repos={repos} />
+        <h3>Report</h3>
+        {report ? <ReportView markdown={report} /> : running ? <Loading label="awaiting report…" /> : <p className="muted">No report.</p>}
+      </div>
+
+      <div className="accordions">
+        <Accordion title="Fetch ledger" count={s.urls.length}>
+          <LedgerTable urls={s.urls} coverage={s.coverage} />
+        </Accordion>
+        <Accordion title="Event log" count={s.log.length}>
+          <EventLog log={s.log} />
+        </Accordion>
+        {detail?.files && detail.files.length > 0 && (
+          <Accordion title="Run files" count={detail.files.length}>
+            <ul className="files">
+              {detail.files.map((f) => (
+                <li key={f.name}>
+                  <a href={api.fileUrl(runId, f.name)} target="_blank" rel="noreferrer">
+                    {f.name}
+                  </a>
+                  <span className="muted small"> {f.bytes}b</span>
+                </li>
+              ))}
+            </ul>
+          </Accordion>
+        )}
+        {s.files?.comparison && (
+          <Accordion title="comparison.md">
+            <ReportView markdown={s.files.comparison} />
+          </Accordion>
+        )}
+      </div>
     </div>
   );
 }

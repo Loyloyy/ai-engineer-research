@@ -6,6 +6,7 @@ import History from "./components/History";
 import RunView from "./components/RunView";
 import PromptEditor from "./components/PromptEditor";
 import ParamsEditor from "./components/ParamsEditor";
+import EgressPanel from "./components/EgressPanel";
 
 type View =
   | { name: "home" }
@@ -15,6 +16,8 @@ type View =
 export default function App() {
   const [view, setView] = useState<View>({ name: "home" });
   const [active, setActive] = useState<ActiveRun | null>(null);
+  // Presentation mode: scales up fonts/diagram + hides chrome for a lecture-theatre projector.
+  const [present, setPresent] = useState(false);
 
   // On load (and when returning home), check for an in-progress run so we can offer to reconnect.
   useEffect(() => {
@@ -32,7 +35,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app${present ? " present" : ""}`}>
       <header className="topbar">
         <h1 onClick={() => setView({ name: "home" })} className="brand">
           Deep Researcher <span className="muted">· Stage 2</span>
@@ -43,6 +46,13 @@ export default function App() {
           </button>
           <button className={view.name === "settings" ? "active" : ""} onClick={() => setView({ name: "settings" })}>
             Prompts & Params
+          </button>
+          <button
+            className={`present-toggle${present ? " active" : ""}`}
+            onClick={() => setPresent((v) => !v)}
+            title="Toggle presentation mode (larger, projector-friendly)"
+          >
+            ⛶ Present
           </button>
         </nav>
       </header>
@@ -75,9 +85,12 @@ export default function App() {
         )}
 
         {view.name === "settings" && (
-          <div className="settings two-col">
-            <PromptEditor />
-            <ParamsEditor />
+          <div className="settings">
+            <div className="two-col">
+              <PromptEditor />
+              <ParamsEditor />
+            </div>
+            <EgressPanel />
           </div>
         )}
       </main>

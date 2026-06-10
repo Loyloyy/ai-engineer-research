@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { api, ApiError } from "../api";
+import Stepper from "./Stepper";
+import Loading from "./Loading";
 
 interface Props {
   onStarted: (runId: string, multiAgent: boolean) => void;
@@ -63,7 +65,9 @@ export default function RunForm({ onStarted }: Props) {
 
   if (questions && questions.length > 0) {
     return (
-      <div className="card runform">
+      <div className="runform-wrap step-enter">
+        <Stepper step={1} />
+        <div className="card runform">
         <h2>Clarify the scope</h2>
         <p className="muted">Optional — press Enter to skip any. Answers sharpen the brief.</p>
         {questions.map((q, i) => (
@@ -80,19 +84,22 @@ export default function RunForm({ onStarted }: Props) {
             disabled={busy}
             onClick={() => doStart(questions.map((q, i) => [q, answers[i]] as [string, string]))}
           >
-            {busy ? "Starting…" : "Start research"}
+            {busy ? <Loading label="Preparing run…" /> : "Start research"}
           </button>
           <button className="ghost" disabled={busy} onClick={() => setQuestions(null)}>
             Back
           </button>
         </div>
         {err && <p className="error">{err}</p>}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="card runform">
+    <div className="runform-wrap step-enter">
+      <Stepper step={0} />
+      <div className="card runform">
       <h2>New research run</h2>
       <div className="field">
         <label>Topic</label>
@@ -122,13 +129,14 @@ export default function RunForm({ onStarted }: Props) {
       </div>
       <div className="actions">
         <button disabled={!topic.trim() || busy} onClick={doClarify}>
-          {busy ? "…" : "Clarify & start"}
+          {busy ? <Loading /> : "Clarify & start"}
         </button>
         <button className="ghost" disabled={!topic.trim() || busy} onClick={() => doStart([])}>
           Skip clarify → start
         </button>
       </div>
       {err && <p className="error">{err}</p>}
+      </div>
     </div>
   );
 }

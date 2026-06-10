@@ -57,6 +57,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body }),
     }).then((r) => json<{ ok: boolean }>(r)),
+  getEgress: () => fetch("/api/egress").then((r) => json<{ domains: string[] }>(r)),
   getParams: () => fetch("/api/params").then((r) => json<{ params: Record<string, any> }>(r)),
   putParams: (params: Record<string, any>) =>
     fetch("/api/params", {

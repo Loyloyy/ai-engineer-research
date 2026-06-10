@@ -54,6 +54,10 @@ const EMPTY: RunState = {
 
 const LOG_CAP = 500;
 const URL_CAP = 500;
+// Subagents fire start→end fast, and the 0.4s SSE poll can coalesce both into one frame — so a node's
+// "active" (blue) phase could render and vanish in a single tick (the "jump straight to maturity" flash).
+// Keep each node visibly blue for at least this long after it activates before letting it drop to green.
+const MIN_DWELL_MS = 800;
 
 // Subscribe to a run's SSE stream and accumulate its events into a single RunState.
 export function useEventStream(runId: string | null): RunState {
@@ -69,6 +73,11 @@ export function useEventStream(runId: string | null): RunState {
     const es = new EventSource(streamUrl(runId));
     esRef.current = es;
 
+    // Per-node dwell bookkeeping (see MIN_DWELL_MS): when a node went active, and any pending delayed
+    // removal from the `running` set so a fast start→end pair still shows the blue phase.
+    const activatedAt = new Map<string, number>();
+    const removalTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
     es.onopen = () => setState((s) => ({ ...s, connected: true }));
     es.onerror = () => setState((s) => ({ ...s, connected: false }));
 
@@ -83,22 +92,43 @@ export function useEventStream(runId: string | null): RunState {
 
     on("status", (d) => setState((s) => ({ ...s, status: d.text })));
 
-    on("stage", (d) =>
-      setState((s) => {
-        if (d.mode === "lean") return { ...s, leanStage: d.node };
-        // "lead" highlight is derived from whether any subagent is running (see Diagram), so skip it here.
-        if (d.node === "lead") return s;
-        const running = new Set(s.running);
-        const engaged = new Set(s.engaged);
-        if (d.active) {
-          running.add(d.node);
-          engaged.add(d.node);
-        } else {
-          running.delete(d.node);
+    on("stage", (d) => {
+      if (d.mode === "lean") {
+        setState((s) => ({ ...s, leanStage: d.node }));
+        return;
+      }
+      // "lead" highlight is derived from whether any subagent is running (see Diagram), so skip it here.
+      if (d.node === "lead") return;
+      const node = d.node as string;
+      if (d.active) {
+        const pending = removalTimers.get(node);
+        if (pending) {
+          clearTimeout(pending);
+          removalTimers.delete(node);
         }
-        return { ...s, running: [...running], engaged: [...engaged] };
-      })
-    );
+        activatedAt.set(node, Date.now());
+        setState((s) => {
+          const running = new Set(s.running).add(node);
+          const engaged = new Set(s.engaged).add(node); // engaged accumulates; never cleared
+          return { ...s, running: [...running], engaged: [...engaged] };
+        });
+        return;
+      }
+      // Deactivation: hold the blue phase for the remainder of MIN_DWELL_MS before dropping to green.
+      const drop = () => {
+        removalTimers.delete(node);
+        setState((s) => {
+          const running = new Set(s.running);
+          running.delete(node);
+          return { ...s, running: [...running] };
+        });
+      };
+      const remaining = MIN_DWELL_MS - (Date.now() - (activatedAt.get(node) ?? 0));
+      const existing = removalTimers.get(node);
+      if (existing) clearTimeout(existing);
+      if (remaining <= 0) drop();
+      else removalTimers.set(node, setTimeout(drop, remaining));
+    });
 
     on("delegate", (d: DelegateEvent) =>
       setState((s) => ({ ...s, delegations: [...s.delegations, d] }))
@@ -142,6 +172,7 @@ export function useEventStream(runId: string | null): RunState {
     return () => {
       es.close();
       esRef.current = null;
+      removalTimers.forEach((t) => clearTimeout(t));
     };
   }, [runId]);
 
